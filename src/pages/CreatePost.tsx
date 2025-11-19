@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,54 +12,153 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { z } from "zod";
 import { Sparkles } from "lucide-react";
-
-const postSchema = z.object({
-  typeOfPost: z.string().min(1, "Type of post is required"),
-  platforms: z.array(z.string()).min(1, "Select at least one platform"),
-  textContent: z.string().optional(),
-  youtubeTitle: z.string().optional(),
-  youtubeDescription: z.string().optional(),
-  igTags: z.string().optional(),
-  fbTags: z.string().optional(),
-  status: z.enum(["draft", "scheduled", "published"]),
-  scheduled_at: z.string().optional(),
-});
 
 export default function CreatePost() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  
+  // Form state
   const [typeOfPost, setTypeOfPost] = useState("");
   const [platforms, setPlatforms] = useState<string[]>([]);
-  const [showYouTubeFields, setShowYouTubeFields] = useState(false);
-  const [showInstagramFields, setShowInstagramFields] = useState(false);
-  const [showFacebookFields, setShowFacebookFields] = useState(false);
-  const [showLinkedInAccountType, setShowLinkedInAccountType] = useState(false);
   const [linkedInAccountTypes, setLinkedInAccountTypes] = useState<string[]>([]);
+  const [textContent, setTextContent] = useState("");
+  const [youtubeTitle, setYoutubeTitle] = useState("");
+  const [youtubeDescription, setYoutubeDescription] = useState("");
+  const [igTags, setIgTags] = useState("");
+  const [fbTags, setFbTags] = useState("");
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaCaption, setMediaCaption] = useState("");
+  const [articleTitle, setArticleTitle] = useState("");
+  const [articleDescription, setArticleDescription] = useState("");
+  const [articleUrl, setArticleUrl] = useState("");
+  const [status, setStatus] = useState("draft");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [fileError, setFileError] = useState("");
+  
+  // AI Modal state
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiTargetField, setAiTargetField] = useState<string>("");
   const [aiLoading, setAiLoading] = useState(false);
 
-  const platformOptions = [
-    { value: "instagram", label: "Instagram", icon: "📷" },
-    { value: "facebook", label: "Facebook", icon: "📘" },
-    { value: "linkedin", label: "LinkedIn", icon: "💼" },
-    { value: "youtube", label: "YouTube", icon: "📹" },
-    { value: "twitter", label: "Twitter", icon: "🐦" },
-  ];
+  // Character count
+  const textContentMaxLength = 2000;
+  const textContentCount = textContent.length;
+
+  // Platform options based on post type
+  const getPlatformOptions = () => {
+    const typeValue = typeOfPost;
+    
+    if (typeValue === "onlyText") {
+      return [
+        { value: "instagram", label: "Instagram", icon: "📷" },
+        { value: "facebook", label: "Facebook", icon: "📘" },
+        { value: "linkedin", label: "LinkedIn", icon: "💼" },
+        { value: "twitter", label: "Twitter", icon: "🐦" },
+      ];
+    } else if (typeValue === "article") {
+      return [
+        { value: "linkedin", label: "LinkedIn", icon: "💼" },
+        { value: "facebook", label: "Facebook", icon: "📘" },
+      ];
+    } else if (typeValue === "pdf") {
+      return [
+        { value: "linkedin", label: "LinkedIn", icon: "💼" },
+      ];
+    } else if (typeValue === "shorts") {
+      return [
+        { value: "instagram", label: "Instagram", icon: "📷" },
+        { value: "facebook", label: "Facebook", icon: "📘" },
+        { value: "youtube", label: "YouTube", icon: "📹" },
+      ];
+    } else {
+      return [
+        { value: "instagram", label: "Instagram", icon: "📷" },
+        { value: "facebook", label: "Facebook", icon: "📘" },
+        { value: "linkedin", label: "LinkedIn", icon: "💼" },
+        { value: "youtube", label: "YouTube", icon: "📹" },
+        { value: "twitter", label: "Twitter", icon: "🐦" },
+      ];
+    }
+  };
+
+  const platformOptions = getPlatformOptions();
+
+  // Conditional visibility
+  const showPlatforms = typeOfPost !== "";
+  const showTextContent = typeOfPost !== "";
+  const showMediaUpload = typeOfPost !== "" && typeOfPost !== "onlyText" && typeOfPost !== "article";
+  const showMediaCaption = showMediaUpload && typeOfPost !== "pdf";
+  const showArticleFields = typeOfPost === "article" || typeOfPost === "pdf";
+  const showArticleUrl = typeOfPost === "article";
+  const showYouTubeFields = platforms.includes("youtube") && (typeOfPost === "video" || typeOfPost === "shorts");
+  const showInstagramFields = platforms.includes("instagram");
+  const showFacebookFields = platforms.includes("facebook");
+  const showLinkedInAccountType = platforms.includes("linkedin");
+  const showReelNotice = typeOfPost === "video" && (platforms.includes("facebook") || platforms.includes("instagram"));
+
+  // Reset fields when type changes
+  useEffect(() => {
+    setPlatforms([]);
+    setLinkedInAccountTypes([]);
+    setMediaFile(null);
+    setFileError("");
+  }, [typeOfPost]);
+
+  // File validation
+  const validateFile = (file: File | null) => {
+    if (!file) return true;
+    
+    const typeValue = typeOfPost;
+    let allowedTypes: string[] = [];
+    let maxSize = 0;
+    
+    if (typeValue === "image") {
+      allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+      maxSize = 10 * 1024 * 1024; // 10MB
+    } else if (typeValue === "carousel") {
+      allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+      maxSize = 10 * 1024 * 1024;
+    } else if (typeValue === "video" || typeValue === "shorts") {
+      allowedTypes = ["video/mp4", "video/mov", "video/webm"];
+      maxSize = 100 * 1024 * 1024; // 100MB
+    } else if (typeValue === "pdf") {
+      allowedTypes = ["application/pdf"];
+      maxSize = 10 * 1024 * 1024;
+    }
+    
+    if (!allowedTypes.includes(file.type)) {
+      setFileError(`Invalid file type. Allowed: ${allowedTypes.join(", ")}`);
+      return false;
+    }
+    
+    if (file.size > maxSize) {
+      setFileError(`File too large. Max size: ${maxSize / (1024 * 1024)}MB`);
+      return false;
+    }
+    
+    setFileError("");
+    return true;
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setMediaFile(file);
+    validateFile(file);
+  };
 
   const handlePlatformChange = (platform: string, checked: boolean) => {
     setPlatforms(prev => 
       checked ? [...prev, platform] : prev.filter(p => p !== platform)
     );
-    
-    if (platform === "youtube") setShowYouTubeFields(checked);
-    if (platform === "instagram") setShowInstagramFields(checked);
-    if (platform === "facebook") setShowFacebookFields(checked);
-    if (platform === "linkedin") setShowLinkedInAccountType(checked);
+  };
+
+  const handleLinkedInAccountTypeChange = (type: string, checked: boolean) => {
+    setLinkedInAccountTypes(prev =>
+      checked ? [...prev, type] : prev.filter(t => t !== type)
+    );
   };
 
   const openAiModal = (field: string) => {
@@ -85,10 +184,11 @@ export default function CreatePost() {
       const data = await response.json();
       
       if (data.generatedText) {
-        const targetElement = document.getElementById(aiTargetField) as HTMLTextAreaElement | HTMLInputElement;
-        if (targetElement) {
-          targetElement.value = data.generatedText;
-        }
+        // Set the generated text to the target field
+        if (aiTargetField === "textContent") setTextContent(data.generatedText);
+        else if (aiTargetField === "youtubeDescription") setYoutubeDescription(data.generatedText);
+        else if (aiTargetField === "mediaCaption") setMediaCaption(data.generatedText);
+        
         toast.success("Content generated successfully");
         setAiModalOpen(false);
       } else {
@@ -104,38 +204,67 @@ export default function CreatePost() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    
+    if (platforms.length === 0) {
+      toast.error("Please select at least one platform");
+      return;
+    }
+    
+    if (showMediaUpload && !mediaFile) {
+      toast.error("Please upload media");
+      return;
+    }
+    
+    if (fileError) {
+      toast.error("Please fix file errors");
+      return;
+    }
+    
     setLoading(true);
 
-    const formData = new FormData(e.currentTarget);
-    const data = {
-      typeOfPost: formData.get("typeOfPost") as string,
-      platforms,
-      textContent: formData.get("textContent") as string,
-      youtubeTitle: formData.get("youtubeTitle") as string,
-      youtubeDescription: formData.get("youtubeDescription") as string,
-      igTags: formData.get("igTags") as string,
-      fbTags: formData.get("fbTags") as string,
-      status: formData.get("status") as string,
-      scheduled_at: formData.get("scheduled_at") as string,
-    };
-
     try {
-      postSchema.parse(data);
+      // Prepare title and description
+      let title = "";
+      let description = "";
+      
+      if (typeOfPost === "article" || typeOfPost === "pdf") {
+        title = articleTitle;
+        description = articleDescription;
+      } else if (typeOfPost === "video" || typeOfPost === "shorts") {
+        title = youtubeTitle || `${typeOfPost} Post`;
+        description = youtubeDescription || textContent;
+      } else {
+        title = textContent?.substring(0, 100) || `${typeOfPost} Post`;
+        description = textContent;
+      }
 
-      const title = data.typeOfPost === "onlyText" 
-        ? data.textContent?.substring(0, 100) || "Text Post"
-        : data.youtubeTitle || `${data.typeOfPost} Post`;
+      // Upload media if exists
+      let mediaUrl = null;
+      if (mediaFile) {
+        const fileExt = mediaFile.name.split('.').pop();
+        const fileName = `${user!.id}-${Date.now()}.${fileExt}`;
+        
+        const { error: uploadError, data: uploadData } = await supabase.storage
+          .from('post-media')
+          .upload(fileName, mediaFile);
 
-      const description = data.typeOfPost === "onlyText"
-        ? data.textContent
-        : data.youtubeDescription || data.textContent;
+        if (uploadError) throw uploadError;
+        
+        const { data: { publicUrl } } = supabase.storage
+          .from('post-media')
+          .getPublicUrl(fileName);
+        
+        mediaUrl = publicUrl;
+      }
 
+      // Insert post
       const { error } = await supabase.from("posts").insert({
         user_id: user!.id,
         title,
         description: description || null,
-        status: data.status,
-        scheduled_at: data.scheduled_at || null,
+        media_url: mediaUrl,
+        status,
+        scheduled_at: scheduledAt || null,
       });
 
       if (error) throw error;
@@ -143,11 +272,8 @@ export default function CreatePost() {
       toast.success("Post created successfully");
       navigate("/posts");
     } catch (error: any) {
-      if (error instanceof z.ZodError) {
-        toast.error(error.errors[0].message);
-      } else {
-        toast.error(error.message || "Failed to create post");
-      }
+      console.error("Error creating post:", error);
+      toast.error(error.message || "Failed to create post");
     } finally {
       setLoading(false);
     }
@@ -166,10 +292,13 @@ export default function CreatePost() {
             <CardTitle>Post Details</CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Type of Post */}
               <div className="space-y-2">
-                <Label htmlFor="typeOfPost">Type of Post <span className="text-destructive">*</span></Label>
-                <Select name="typeOfPost" value={typeOfPost} onValueChange={setTypeOfPost} required>
+                <Label htmlFor="typeOfPost">
+                  Type of Post <span className="text-destructive">*</span>
+                </Label>
+                <Select value={typeOfPost} onValueChange={setTypeOfPost} required>
                   <SelectTrigger>
                     <SelectValue placeholder="Select..." />
                   </SelectTrigger>
@@ -185,8 +314,9 @@ export default function CreatePost() {
                 </Select>
               </div>
 
-              {typeOfPost && (
-                <div className="space-y-2">
+              {/* Platforms */}
+              {showPlatforms && (
+                <div className="space-y-3">
                   <Label>Platforms <span className="text-destructive">*</span></Label>
                   <div className="grid grid-cols-2 gap-3">
                     {platformOptions.map((platform) => (
@@ -208,19 +338,18 @@ export default function CreatePost() {
                 </div>
               )}
 
+              {/* LinkedIn Account Type */}
               {showLinkedInAccountType && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <Label>LinkedIn Account Type <span className="text-destructive">*</span></Label>
                   <div className="flex gap-4">
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         id="li-personal"
                         checked={linkedInAccountTypes.includes("personal")}
-                        onCheckedChange={(checked) => {
-                          setLinkedInAccountTypes(prev =>
-                            checked ? [...prev, "personal"] : prev.filter(t => t !== "personal")
-                          );
-                        }}
+                        onCheckedChange={(checked) => 
+                          handleLinkedInAccountTypeChange("personal", checked as boolean)
+                        }
                       />
                       <Label htmlFor="li-personal" className="cursor-pointer">Personal</Label>
                     </div>
@@ -228,11 +357,9 @@ export default function CreatePost() {
                       <Checkbox
                         id="li-company"
                         checked={linkedInAccountTypes.includes("company")}
-                        onCheckedChange={(checked) => {
-                          setLinkedInAccountTypes(prev =>
-                            checked ? [...prev, "company"] : prev.filter(t => t !== "company")
-                          );
-                        }}
+                        onCheckedChange={(checked) => 
+                          handleLinkedInAccountTypeChange("company", checked as boolean)
+                        }
                       />
                       <Label htmlFor="li-company" className="cursor-pointer">Company</Label>
                     </div>
@@ -240,54 +367,149 @@ export default function CreatePost() {
                 </div>
               )}
 
-              {platforms.length > 0 && (
+              {/* Text Content */}
+              {showTextContent && (
                 <div className="space-y-2 relative">
                   <Label htmlFor="textContent">Text Content (Optional)</Label>
-                  <Textarea
-                    id="textContent"
-                    name="textContent"
-                    placeholder="Enter your text content..."
-                    rows={5}
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-2 top-8"
-                    onClick={() => openAiModal("textContent")}
-                  >
-                    <Sparkles className="h-4 w-4 text-primary" />
-                  </Button>
-                </div>
-              )}
-
-              {showYouTubeFields && (
-                <div className="space-y-4 p-4 border rounded-lg bg-accent/50">
-                  <h3 className="font-semibold">YouTube Fields</h3>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="youtubeTitle">Video Title <span className="text-destructive">*</span></Label>
-                    <Input
-                      id="youtubeTitle"
-                      name="youtubeTitle"
-                      placeholder="Enter video title..."
-                    />
-                  </div>
-
-                  <div className="space-y-2 relative">
-                    <Label htmlFor="youtubeDescription">Video Description <span className="text-destructive">*</span></Label>
+                  <div className="relative">
                     <Textarea
-                      id="youtubeDescription"
-                      name="youtubeDescription"
-                      placeholder="Enter video description..."
-                      rows={3}
+                      id="textContent"
+                      value={textContent}
+                      onChange={(e) => setTextContent(e.target.value.slice(0, textContentMaxLength))}
+                      placeholder="Write your post text..."
+                      rows={5}
+                      className="pr-10"
                     />
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
-                      className="absolute right-2 top-8"
-                      onClick={() => openAiModal("youtubeDescription")}
+                      className="absolute right-2 top-2"
+                      onClick={() => openAiModal("textContent")}
+                    >
+                      <Sparkles className="h-4 w-4 text-primary" />
+                    </Button>
+                    <div className="absolute right-2 bottom-2 text-xs text-muted-foreground">
+                      {textContentCount}/{textContentMaxLength}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Article Fields */}
+              {showArticleFields && (
+                <div className="space-y-4 p-4 border rounded-lg bg-accent/50">
+                  <h3 className="font-semibold">Article Fields</h3>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="articleTitle">
+                      Article Title <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="articleTitle"
+                      value={articleTitle}
+                      onChange={(e) => setArticleTitle(e.target.value)}
+                      placeholder="Enter title..."
+                      required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="articleDescription">
+                      Article Description <span className="text-destructive">*</span>
+                    </Label>
+                    <Textarea
+                      id="articleDescription"
+                      value={articleDescription}
+                      onChange={(e) => setArticleDescription(e.target.value)}
+                      placeholder="Enter description..."
+                      rows={3}
+                      required
+                    />
+                  </div>
+
+                  {showArticleUrl && (
+                    <div className="space-y-2">
+                      <Label htmlFor="articleUrl">
+                        Article URL <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        id="articleUrl"
+                        type="url"
+                        value={articleUrl}
+                        onChange={(e) => setArticleUrl(e.target.value)}
+                        placeholder="https://..."
+                        required
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Upload Media */}
+              {showMediaUpload && (
+                <div className="space-y-2 relative">
+                  <Label htmlFor="mediaFile">
+                    Upload Media <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="mediaFile"
+                      type="file"
+                      onChange={handleFileChange}
+                      accept={
+                        typeOfPost === "image" || typeOfPost === "carousel" 
+                          ? "image/jpeg,image/jpg,image/png,image/webp"
+                          : typeOfPost === "video" || typeOfPost === "shorts"
+                          ? "video/mp4,video/mov,video/webm"
+                          : typeOfPost === "pdf"
+                          ? "application/pdf"
+                          : "*"
+                      }
+                      className={fileError ? "border-destructive" : ""}
+                    />
+                    {(typeOfPost === "image" || typeOfPost === "video") && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-2 top-1"
+                        onClick={() => openAiModal("media")}
+                      >
+                        <Sparkles className="h-4 w-4 text-primary" />
+                      </Button>
+                    )}
+                  </div>
+                  {fileError && (
+                    <p className="text-sm text-destructive">{fileError}</p>
+                  )}
+                  {showReelNotice && (
+                    <p className="text-sm text-blue-600">
+                      ( In Facebook and Instagram, Video will be posted as Reel )
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Media Caption */}
+              {showMediaCaption && (
+                <div className="space-y-2 relative">
+                  <Label htmlFor="mediaCaption">Media Caption (Optional)</Label>
+                  <div className="relative">
+                    <Textarea
+                      id="mediaCaption"
+                      value={mediaCaption}
+                      onChange={(e) => setMediaCaption(e.target.value)}
+                      placeholder="Add a caption for your media..."
+                      rows={2}
+                      className="pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-2 top-2"
+                      onClick={() => openAiModal("mediaCaption")}
                     >
                       <Sparkles className="h-4 w-4 text-primary" />
                     </Button>
@@ -295,33 +517,82 @@ export default function CreatePost() {
                 </div>
               )}
 
+              {/* YouTube Fields */}
+              {showYouTubeFields && (
+                <div className="space-y-4 p-4 border rounded-lg bg-accent/50">
+                  <h3 className="font-semibold">YouTube Fields</h3>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="youtubeTitle">
+                      Video Title <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="youtubeTitle"
+                      value={youtubeTitle}
+                      onChange={(e) => setYoutubeTitle(e.target.value)}
+                      placeholder="Enter video title..."
+                    />
+                  </div>
+
+                  <div className="space-y-2 relative">
+                    <Label htmlFor="youtubeDescription">
+                      Video Description <span className="text-destructive">*</span>
+                    </Label>
+                    <div className="relative">
+                      <Textarea
+                        id="youtubeDescription"
+                        value={youtubeDescription}
+                        onChange={(e) => setYoutubeDescription(e.target.value)}
+                        placeholder="Enter video description..."
+                        rows={3}
+                        className="pr-10"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-2 top-2"
+                        onClick={() => openAiModal("youtubeDescription")}
+                      >
+                        <Sparkles className="h-4 w-4 text-primary" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Instagram Fields */}
               {showInstagramFields && (
                 <div className="space-y-2 p-4 border rounded-lg bg-accent/50">
                   <h3 className="font-semibold">Instagram Fields</h3>
                   <Label htmlFor="igTags">Instagram Tags</Label>
                   <Input
                     id="igTags"
-                    name="igTags"
+                    value={igTags}
+                    onChange={(e) => setIgTags(e.target.value)}
                     placeholder="Enter username to tag or mention..."
                   />
                 </div>
               )}
 
+              {/* Facebook Fields */}
               {showFacebookFields && (
                 <div className="space-y-2 p-4 border rounded-lg bg-accent/50">
                   <h3 className="font-semibold">Facebook Fields</h3>
                   <Label htmlFor="fbTags">Facebook Tags</Label>
                   <Input
                     id="fbTags"
-                    name="fbTags"
+                    value={fbTags}
+                    onChange={(e) => setFbTags(e.target.value)}
                     placeholder="Enter URLs of Facebook Profile to tag..."
                   />
                 </div>
               )}
 
+              {/* Status */}
               <div className="space-y-2">
                 <Label htmlFor="status">Status</Label>
-                <Select name="status" defaultValue="draft">
+                <Select value={status} onValueChange={setStatus}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -333,23 +604,32 @@ export default function CreatePost() {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="scheduled_at">Schedule Date (Optional)</Label>
-                <Input
-                  id="scheduled_at"
-                  name="scheduled_at"
-                  type="datetime-local"
-                />
-              </div>
+              {/* Schedule Date */}
+              {status === "scheduled" && (
+                <div className="space-y-2">
+                  <Label htmlFor="scheduledAt">
+                    Schedule Date & Time <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="scheduledAt"
+                    type="datetime-local"
+                    value={scheduledAt}
+                    onChange={(e) => setScheduledAt(e.target.value)}
+                    required
+                  />
+                </div>
+              )}
 
-              <div className="flex gap-2">
-                <Button type="submit" disabled={loading}>
-                  {loading ? "Creating..." : "Create Post"}
+              {/* Submit Buttons */}
+              <div className="flex gap-2 pt-4">
+                <Button type="submit" disabled={loading} className="flex-1">
+                  {loading ? "Creating..." : "Submit"}
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => navigate("/posts")}
+                  disabled={loading}
                 >
                   Cancel
                 </Button>
@@ -359,6 +639,7 @@ export default function CreatePost() {
         </Card>
       </div>
 
+      {/* AI Modal */}
       <Dialog open={aiModalOpen} onOpenChange={setAiModalOpen}>
         <DialogContent>
           <DialogHeader>
@@ -377,7 +658,11 @@ export default function CreatePost() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setAiModalOpen(false)} disabled={aiLoading}>
+            <Button 
+              variant="outline" 
+              onClick={() => setAiModalOpen(false)} 
+              disabled={aiLoading}
+            >
               Cancel
             </Button>
             <Button onClick={handleAiGenerate} disabled={aiLoading}>
