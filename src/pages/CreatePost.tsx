@@ -150,14 +150,20 @@ export default function CreatePost() {
       const data = {
         type_of_post: typeOfPost,
         platforms: platforms,
-        account_type: accountTypeValue || null,
-        text: textContent || null,
-        image: typeOfPost === "image" || typeOfPost === "carousel" ? (uploadedUrl || "") : "",
-        video: typeOfPost === "video" || typeOfPost === "shorts" ? (uploadedUrl || "") : "",
-        pdf: typeOfPost === "pdf" ? (uploadedUrl || "") : "",
-        title: articleTitle || null,
-        description: articleDescription || null,
-        url: articleUrl || null,
+        account_type: accountTypeValue || undefined,
+        text: textContent || undefined,
+        image:
+          typeOfPost === "image" || typeOfPost === "carousel"
+            ? uploadedUrl || ""
+            : "",
+        video:
+          typeOfPost === "video" || typeOfPost === "shorts"
+            ? uploadedUrl || ""
+            : "",
+        pdf: typeOfPost === "pdf" ? uploadedUrl || "" : "",
+        title: articleTitle || undefined,
+        description: articleDescription || undefined,
+        url: articleUrl || undefined,
         tags: [
           youtubeTitle ? `youtube_title:${youtubeTitle}` : "",
           youtubeDescription ? `youtube_description:${youtubeDescription}` : "",
@@ -165,7 +171,7 @@ export default function CreatePost() {
           facebookTags ? `facebook_tags:${facebookTags}` : "",
         ].filter(Boolean),
         status: status,
-        scheduled_at: scheduledAt || null,
+        scheduled_at: scheduledAt || undefined,
       };
 
       postSchema.parse(data);
@@ -174,17 +180,17 @@ export default function CreatePost() {
         user_id: user!.id,
         type_of_post: data.type_of_post,
         platforms: data.platforms,
-        account_type: data.account_type,
-        text: data.text,
+        account_type: data.account_type ?? null,
+        text: data.text ?? null,
         image: data.image || null,
         video: data.video || null,
         pdf: data.pdf || null,
-        title: data.title,
-        description: data.description,
-        url: data.url,
+        title: data.title ?? null,
+        description: data.description ?? null,
+        url: data.url || null,
         tags: data.tags.length > 0 ? data.tags : null,
         status: data.status,
-        scheduled_at: data.scheduled_at,
+        scheduled_at: data.scheduled_at ?? null,
       });
 
       if (error) throw error;
