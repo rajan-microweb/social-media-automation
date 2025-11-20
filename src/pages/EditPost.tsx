@@ -274,7 +274,7 @@ export default function EditPost() {
           facebookTags ? `facebook_tags:${facebookTags}` : "",
         ].filter(Boolean),
         status: status,
-        scheduled_at: scheduledAt || undefined,
+        scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
       };
 
       postSchema.parse(data);
