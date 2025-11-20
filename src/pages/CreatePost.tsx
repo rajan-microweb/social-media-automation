@@ -161,7 +161,7 @@ export default function CreatePost() {
             ? uploadedUrl || ""
             : "",
         pdf: typeOfPost === "pdf" ? uploadedUrl || "" : "",
-        title: articleTitle || undefined,
+        title: articleTitle || "",
         description: articleDescription || undefined,
         url: articleUrl || undefined,
         tags: [
@@ -185,7 +185,7 @@ export default function CreatePost() {
         image: data.image || null,
         video: data.video || null,
         pdf: data.pdf || null,
-        title: data.title ?? null,
+        title: data.title ?? "",
         description: data.description ?? null,
         url: data.url || null,
         tags: data.tags.length > 0 ? data.tags : null,
