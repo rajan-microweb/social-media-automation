@@ -694,7 +694,7 @@ export default function CreatePost() {
               )}
 
               {/* Facebook Fields - Show when Facebook selected */}
-              {/* {showFacebookFields && (
+              {showFacebookFields && (
                 <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
                   <h3 className="font-semibold">Facebook Fields</h3>
                   
@@ -711,7 +711,7 @@ export default function CreatePost() {
                     />
                   </div>
                 </div>
-              )} */}
+              )}
 
               {/* Schedule - Show when type is selected */}
               {showSchedule && (
