@@ -53,13 +53,14 @@ export default function CreatePost() {
   const [articleTitle, setArticleTitle] = useState("");
   const [articleDescription, setArticleDescription] = useState("");
   const [articleUrl, setArticleUrl] = useState("");
-  const [mediaUrl, setMediaUrl] = useState("");
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [youtubeTitle, setYoutubeTitle] = useState("");
   const [youtubeDescription, setYoutubeDescription] = useState("");
   const [instagramTags, setInstagramTags] = useState("");
   const [facebookTags, setFacebookTags] = useState("");
   const [status, setStatus] = useState("draft");
   const [scheduledAt, setScheduledAt] = useState("");
+  const [uploading, setUploading] = useState(false);
 
   // Available platforms based on post type
   const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
@@ -99,38 +100,74 @@ export default function CreatePost() {
     }
   };
 
+  const uploadFile = async (file: File, folder: string): Promise<string> => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
+    const filePath = `${folder}/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('post-media')
+      .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('post-media')
+      .getPublicUrl(filePath);
+
+    return publicUrl;
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
-
-    // Build account_type string
-    let accountTypeValue = "";
-    if (platforms.includes("linkedin") && linkedinAccountType.length > 0) {
-      accountTypeValue = linkedinAccountType.join(",");
-    }
-
-    const data = {
-      type_of_post: typeOfPost,
-      platforms: platforms,
-      account_type: accountTypeValue || null,
-      text: textContent || null,
-      image: typeOfPost === "image" || typeOfPost === "carousel" ? mediaUrl || null : null,
-      video: typeOfPost === "video" || typeOfPost === "shorts" ? mediaUrl || null : null,
-      pdf: typeOfPost === "pdf" ? mediaUrl || null : null,
-      title: articleTitle || null,
-      description: articleDescription || null,
-      url: articleUrl || null,
-      tags: [
-        youtubeTitle ? `youtube_title:${youtubeTitle}` : "",
-        youtubeDescription ? `youtube_description:${youtubeDescription}` : "",
-        instagramTags ? `instagram_tags:${instagramTags}` : "",
-        facebookTags ? `facebook_tags:${facebookTags}` : "",
-      ].filter(Boolean),
-      status: status,
-      scheduled_at: scheduledAt || null,
-    };
+    setUploading(true);
 
     try {
+      // Upload file if present
+      let uploadedUrl = null;
+      if (mediaFile) {
+        let folder = "";
+        if (typeOfPost === "image" || typeOfPost === "carousel") {
+          folder = "images";
+        } else if (typeOfPost === "video" || typeOfPost === "shorts") {
+          folder = "videos";
+        } else if (typeOfPost === "pdf") {
+          folder = "pdfs";
+        }
+        
+        if (folder) {
+          uploadedUrl = await uploadFile(mediaFile, folder);
+        }
+      }
+
+      // Build account_type string
+      let accountTypeValue = "";
+      if (platforms.includes("linkedin") && linkedinAccountType.length > 0) {
+        accountTypeValue = linkedinAccountType.join(",");
+      }
+
+      const data = {
+        type_of_post: typeOfPost,
+        platforms: platforms,
+        account_type: accountTypeValue || null,
+        text: textContent || null,
+        image: typeOfPost === "image" || typeOfPost === "carousel" ? uploadedUrl : null,
+        video: typeOfPost === "video" || typeOfPost === "shorts" ? uploadedUrl : null,
+        pdf: typeOfPost === "pdf" ? uploadedUrl : null,
+        title: articleTitle || null,
+        description: articleDescription || null,
+        url: articleUrl || null,
+        tags: [
+          youtubeTitle ? `youtube_title:${youtubeTitle}` : "",
+          youtubeDescription ? `youtube_description:${youtubeDescription}` : "",
+          instagramTags ? `instagram_tags:${instagramTags}` : "",
+          facebookTags ? `facebook_tags:${facebookTags}` : "",
+        ].filter(Boolean),
+        status: status,
+        scheduled_at: scheduledAt || null,
+      };
+
       postSchema.parse(data);
 
       const { error } = await supabase.from("posts").insert({
@@ -162,6 +199,7 @@ export default function CreatePost() {
       }
     } finally {
       setLoading(false);
+      setUploading(false);
     }
   };
 
@@ -349,17 +387,29 @@ export default function CreatePost() {
               {/* Media Upload - Show for image, carousel, video, shorts, pdf */}
               {showMediaUpload && (
                 <div className="space-y-2">
-                  <Label htmlFor="mediaUrl">
+                  <Label htmlFor="mediaFile">
                     {getMediaLabel()} <span className="text-destructive">*</span>
                   </Label>
                   <Input
-                    id="mediaUrl"
-                    type="url"
-                    value={mediaUrl}
-                    onChange={(e) => setMediaUrl(e.target.value)}
-                    placeholder="Enter media URL..."
+                    id="mediaFile"
+                    type="file"
+                    onChange={(e) => setMediaFile(e.target.files?.[0] || null)}
+                    accept={
+                      typeOfPost === "image" || typeOfPost === "carousel"
+                        ? "image/*"
+                        : typeOfPost === "video" || typeOfPost === "shorts"
+                        ? "video/*"
+                        : typeOfPost === "pdf"
+                        ? "application/pdf"
+                        : "*"
+                    }
                     required={showMediaUpload}
                   />
+                  {mediaFile && (
+                    <p className="text-sm text-muted-foreground">
+                      Selected: {mediaFile.name}
+                    </p>
+                  )}
                   {(typeOfPost === "video") && (platforms.includes("facebook") || platforms.includes("instagram")) && (
                     <p className="text-sm text-blue-600">
                       (In Facebook and Instagram, Video will be posted as Reel)
@@ -479,8 +529,8 @@ export default function CreatePost() {
               {/* Submit Buttons */}
               {typeOfPost && (
                 <div className="flex gap-3">
-                  <Button type="submit" disabled={loading}>
-                    {loading ? "Creating..." : "Submit"}
+                  <Button type="submit" disabled={loading || uploading}>
+                    {uploading ? "Uploading..." : loading ? "Creating..." : "Submit"}
                   </Button>
                   <Button type="button" variant="outline" onClick={() => navigate("/posts")}>
                     Cancel
