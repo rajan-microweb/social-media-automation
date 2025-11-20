@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { z } from "zod";
+import { Sparkles } from "lucide-react";
+import { AiPromptModal } from "@/components/AiPromptModal";
 
 // Platform configuration based on post type
 const PLATFORM_MAP: Record<string, string[]> = {
@@ -62,6 +64,11 @@ export default function CreatePost() {
   const [scheduledAt, setScheduledAt] = useState("");
   const [uploading, setUploading] = useState(false);
 
+  // AI Modal state
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [aiModalField, setAiModalField] = useState<"text" | "image" | "video" | "pdf">("text");
+  const [aiModalTarget, setAiModalTarget] = useState<string>("");
+
   // Available platforms based on post type
   const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
 
@@ -97,6 +104,39 @@ export default function CreatePost() {
       setLinkedinAccountType([...linkedinAccountType, type]);
     } else {
       setLinkedinAccountType(linkedinAccountType.filter((t) => t !== type));
+    }
+  };
+
+  const openAiModal = (field: "text" | "image" | "video" | "pdf", target: string) => {
+    setAiModalField(field);
+    setAiModalTarget(target);
+    setAiModalOpen(true);
+  };
+
+  const handleAiGenerate = async (content: string) => {
+    if (aiModalTarget === "textContent") {
+      setTextContent(content);
+    } else if (aiModalTarget === "articleTitle") {
+      setArticleTitle(content);
+    } else if (aiModalTarget === "articleDescription") {
+      setArticleDescription(content);
+    } else if (aiModalTarget === "youtubeTitle") {
+      setYoutubeTitle(content);
+    } else if (aiModalTarget === "youtubeDescription") {
+      setYoutubeDescription(content);
+    } else if (aiModalTarget === "media") {
+      // For media, content is a URL - we need to fetch and convert to File
+      try {
+        const response = await fetch(content);
+        const blob = await response.blob();
+        const filename = content.split("/").pop() || "generated-file";
+        const file = new File([blob], filename, { type: blob.type });
+        setMediaFile(file);
+        toast.success("AI-generated media loaded");
+      } catch (error) {
+        console.error("Error loading AI media:", error);
+        toast.error("Failed to load AI-generated media");
+      }
     }
   };
 
@@ -327,7 +367,19 @@ export default function CreatePost() {
               {/* Text Content - Show for all except PDF */}
               {showTextContent && (
                 <div className="space-y-2">
-                  <Label htmlFor="textContent">Text Content (Optional)</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="textContent">Text Content (Optional)</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openAiModal("text", "textContent")}
+                      className="h-8 gap-1"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      AI Generate
+                    </Button>
+                  </div>
                   <Textarea
                     id="textContent"
                     value={textContent}
@@ -348,9 +400,21 @@ export default function CreatePost() {
                   <h3 className="font-semibold">Article Fields</h3>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="articleTitle">
-                      Article Title <span className="text-destructive">*</span>
-                    </Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="articleTitle">
+                        Article Title <span className="text-destructive">*</span>
+                      </Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openAiModal("text", "articleTitle")}
+                        className="h-8 gap-1"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        AI
+                      </Button>
+                    </div>
                     <Input
                       id="articleTitle"
                       value={articleTitle}
@@ -361,9 +425,21 @@ export default function CreatePost() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="articleDescription">
-                      Article Description <span className="text-destructive">*</span>
-                    </Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="articleDescription">
+                        Article Description <span className="text-destructive">*</span>
+                      </Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openAiModal("text", "articleDescription")}
+                        className="h-8 gap-1"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        AI
+                      </Button>
+                    </div>
                     <Textarea
                       id="articleDescription"
                       value={articleDescription}
@@ -430,9 +506,21 @@ export default function CreatePost() {
                   <h3 className="font-semibold">YouTube Fields</h3>
                   
                   <div className="space-y-2">
-                    <Label htmlFor="youtubeTitle">
-                      Video Title <span className="text-destructive">*</span>
-                    </Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="youtubeTitle">
+                        Video Title <span className="text-destructive">*</span>
+                      </Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openAiModal("text", "youtubeTitle")}
+                        className="h-8 gap-1"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        AI
+                      </Button>
+                    </div>
                     <Input
                       id="youtubeTitle"
                       value={youtubeTitle}
@@ -443,9 +531,21 @@ export default function CreatePost() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="youtubeDescription">
-                      Video Description <span className="text-destructive">*</span>
-                    </Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="youtubeDescription">
+                        Video Description <span className="text-destructive">*</span>
+                      </Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openAiModal("text", "youtubeDescription")}
+                        className="h-8 gap-1"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        AI
+                      </Button>
+                    </div>
                     <Textarea
                       id="youtubeDescription"
                       value={youtubeDescription}
@@ -547,6 +647,13 @@ export default function CreatePost() {
           </CardContent>
         </Card>
       </div>
+
+      <AiPromptModal
+        open={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+        onGenerate={handleAiGenerate}
+        fieldType={aiModalField}
+      />
     </DashboardLayout>
   );
 }
