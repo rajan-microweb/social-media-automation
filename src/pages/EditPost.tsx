@@ -13,16 +13,27 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { z } from "zod";
 
+// Platform configuration based on post type
+const PLATFORM_MAP: Record<string, string[]> = {
+  onlyText: ["Facebook", "LinkedIn"],
+  image: ["Facebook", "Instagram", "LinkedIn"],
+  carousel: ["Facebook", "Instagram", "LinkedIn"],
+  video: ["Facebook", "Instagram", "LinkedIn", "YouTube"],
+  shorts: ["Facebook", "Instagram", "YouTube"],
+  article: ["LinkedIn"],
+  pdf: ["LinkedIn"],
+};
+
 const postSchema = z.object({
-  title: z.string().min(1, "Title is required").max(200),
-  description: z.string().max(2000).optional(),
-  type_of_post: z.string().optional(),
-  platforms: z.array(z.string()).optional(),
+  type_of_post: z.string().min(1, "Type of post is required"),
+  platforms: z.array(z.string()).min(1, "At least one platform is required"),
   account_type: z.string().optional(),
   text: z.string().max(5000).optional(),
   image: z.string().url().optional().or(z.literal("")),
   video: z.string().url().optional().or(z.literal("")),
   pdf: z.string().url().optional().or(z.literal("")),
+  title: z.string().optional(),
+  description: z.string().max(2000).optional(),
   url: z.string().url().optional().or(z.literal("")),
   tags: z.array(z.string()).optional(),
   status: z.enum(["draft", "scheduled", "published"]),
@@ -34,19 +45,29 @@ export default function EditPost() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [post, setPost] = useState<any>(null);
+  const [uploading, setUploading] = useState(false);
+  
+  // Form state
+  const [typeOfPost, setTypeOfPost] = useState("");
   const [platforms, setPlatforms] = useState<string[]>([]);
-  const [tags, setTags] = useState<string[]>([]);
-  const [tagInput, setTagInput] = useState("");
+  const [linkedinAccountType, setLinkedinAccountType] = useState<string[]>([]);
+  const [textContent, setTextContent] = useState("");
+  const [articleTitle, setArticleTitle] = useState("");
+  const [articleDescription, setArticleDescription] = useState("");
+  const [articleUrl, setArticleUrl] = useState("");
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [existingMediaUrl, setExistingMediaUrl] = useState("");
+  const [youtubeTitle, setYoutubeTitle] = useState("");
+  const [youtubeDescription, setYoutubeDescription] = useState("");
+  const [instagramTags, setInstagramTags] = useState("");
+  const [facebookTags, setFacebookTags] = useState("");
+  const [status, setStatus] = useState("draft");
+  const [scheduledAt, setScheduledAt] = useState("");
 
-  const platformOptions = [
-    { value: "instagram", label: "Instagram" },
-    { value: "facebook", label: "Facebook" },
-    { value: "linkedin", label: "LinkedIn" },
-    { value: "twitter", label: "Twitter" },
-    { value: "youtube", label: "YouTube" },
-  ];
+  // Available platforms based on post type
+  const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
 
+  // Fetch existing post data
   useEffect(() => {
     if (!user || !id) return;
 
@@ -56,80 +77,170 @@ export default function EditPost() {
         .select("*")
         .eq("id", id)
         .eq("user_id", user.id)
-        .single();
+        .maybeSingle();
 
-      if (error) {
+      if (error || !data) {
         toast.error("Post not found");
         navigate("/posts");
-      } else {
-        setPost(data);
-        setPlatforms(data.platforms || []);
-        setTags(data.tags || []);
+        return;
+      }
+
+      // Set form values from existing post
+      setTypeOfPost(data.type_of_post || "");
+      setPlatforms(data.platforms?.map((p: string) => p.toLowerCase()) || []);
+      setTextContent(data.text || "");
+      setArticleTitle(data.title || "");
+      setArticleDescription(data.description || "");
+      setArticleUrl(data.url || "");
+      setStatus(data.status);
+      setScheduledAt(data.scheduled_at ? new Date(data.scheduled_at).toISOString().slice(0, 16) : "");
+
+      // Set existing media URL
+      if (data.image) setExistingMediaUrl(data.image);
+      if (data.video) setExistingMediaUrl(data.video);
+      if (data.pdf) setExistingMediaUrl(data.pdf);
+
+      // Parse LinkedIn account type
+      if (data.account_type) {
+        setLinkedinAccountType(data.account_type.split(","));
+      }
+
+      // Parse platform-specific tags
+      if (data.tags && Array.isArray(data.tags)) {
+        data.tags.forEach((tag: string) => {
+          if (tag.startsWith("youtube_title:")) {
+            setYoutubeTitle(tag.replace("youtube_title:", ""));
+          } else if (tag.startsWith("youtube_description:")) {
+            setYoutubeDescription(tag.replace("youtube_description:", ""));
+          } else if (tag.startsWith("instagram_tags:")) {
+            setInstagramTags(tag.replace("instagram_tags:", ""));
+          } else if (tag.startsWith("facebook_tags:")) {
+            setFacebookTags(tag.replace("facebook_tags:", ""));
+          }
+        });
       }
     };
 
     fetchPost();
   }, [user, id, navigate]);
 
+  // Reset form when type changes
+  useEffect(() => {
+    if (typeOfPost) {
+      setAvailablePlatforms(PLATFORM_MAP[typeOfPost] || []);
+    } else {
+      setAvailablePlatforms([]);
+    }
+  }, [typeOfPost]);
+
   const handlePlatformChange = (platform: string, checked: boolean) => {
     if (checked) {
-      setPlatforms([...platforms, platform]);
+      setPlatforms([...platforms, platform.toLowerCase()]);
     } else {
-      setPlatforms(platforms.filter((p) => p !== platform));
+      setPlatforms(platforms.filter((p) => p !== platform.toLowerCase()));
     }
   };
 
-  const handleAddTag = () => {
-    if (tagInput.trim() && !tags.includes(tagInput.trim())) {
-      setTags([...tags, tagInput.trim()]);
-      setTagInput("");
+  const handleLinkedinAccountTypeChange = (type: string, checked: boolean) => {
+    if (checked) {
+      setLinkedinAccountType([...linkedinAccountType, type]);
+    } else {
+      setLinkedinAccountType(linkedinAccountType.filter((t) => t !== type));
     }
   };
 
-  const handleRemoveTag = (tag: string) => {
-    setTags(tags.filter((t) => t !== tag));
+  const uploadFile = async (file: File, folder: string): Promise<string> => {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
+    const filePath = `${folder}/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('post-media')
+      .upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('post-media')
+      .getPublicUrl(filePath);
+
+    return publicUrl;
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
-
-    const formData = new FormData(e.currentTarget);
-    const data = {
-      title: formData.get("title") as string,
-      description: formData.get("description") as string,
-      type_of_post: formData.get("type_of_post") as string,
-      platforms: platforms.length > 0 ? platforms : null,
-      account_type: formData.get("account_type") as string,
-      text: formData.get("text") as string,
-      image: formData.get("image") as string,
-      video: formData.get("video") as string,
-      pdf: formData.get("pdf") as string,
-      url: formData.get("url") as string,
-      tags: tags.length > 0 ? tags : null,
-      status: formData.get("status") as string,
-      scheduled_at: formData.get("scheduled_at") as string,
-    };
+    setUploading(true);
 
     try {
+      // Upload new file if present, otherwise keep existing media
+      let uploadedUrl = existingMediaUrl;
+      if (mediaFile) {
+        let folder = "";
+        if (typeOfPost === "image" || typeOfPost === "carousel") {
+          folder = "images";
+        } else if (typeOfPost === "video" || typeOfPost === "shorts") {
+          folder = "videos";
+        } else if (typeOfPost === "pdf") {
+          folder = "pdfs";
+        }
+        
+        if (folder) {
+          uploadedUrl = await uploadFile(mediaFile, folder);
+        }
+      }
+
+      // Build account_type string
+      let accountTypeValue = "";
+      if (platforms.includes("linkedin") && linkedinAccountType.length > 0) {
+        accountTypeValue = linkedinAccountType.join(",");
+      }
+
+      const data = {
+        type_of_post: typeOfPost,
+        platforms: platforms,
+        account_type: accountTypeValue || undefined,
+        text: textContent || undefined,
+        image:
+          typeOfPost === "image" || typeOfPost === "carousel"
+            ? uploadedUrl || ""
+            : "",
+        video:
+          typeOfPost === "video" || typeOfPost === "shorts"
+            ? uploadedUrl || ""
+            : "",
+        pdf: typeOfPost === "pdf" ? uploadedUrl || "" : "",
+        title: articleTitle || "",
+        description: articleDescription || undefined,
+        url: articleUrl || undefined,
+        tags: [
+          youtubeTitle ? `youtube_title:${youtubeTitle}` : "",
+          youtubeDescription ? `youtube_description:${youtubeDescription}` : "",
+          instagramTags ? `instagram_tags:${instagramTags}` : "",
+          facebookTags ? `facebook_tags:${facebookTags}` : "",
+        ].filter(Boolean),
+        status: status,
+        scheduled_at: scheduledAt || undefined,
+      };
+
       postSchema.parse(data);
 
       const { error } = await supabase
         .from("posts")
         .update({
-          title: data.title,
-          description: data.description || null,
-          type_of_post: data.type_of_post || null,
+          type_of_post: data.type_of_post,
           platforms: data.platforms,
-          account_type: data.account_type || null,
-          text: data.text || null,
+          account_type: data.account_type ?? null,
+          text: data.text ?? null,
           image: data.image || null,
           video: data.video || null,
           pdf: data.pdf || null,
+          title: data.title ?? "",
+          description: data.description ?? null,
           url: data.url || null,
-          tags: data.tags,
+          tags: data.tags.length > 0 ? data.tags : null,
           status: data.status,
-          scheduled_at: data.scheduled_at || null,
+          scheduled_at: data.scheduled_at ?? null,
         })
         .eq("id", id!);
 
@@ -145,17 +256,38 @@ export default function EditPost() {
       }
     } finally {
       setLoading(false);
+      setUploading(false);
     }
   };
 
-  if (!post) return null;
+  // Field visibility logic
+  const showTextContent = typeOfPost && typeOfPost !== "pdf";
+  const showArticleFields = typeOfPost === "article";
+  const showMediaUpload = typeOfPost && typeOfPost !== "onlyText" && typeOfPost !== "article";
+  const showYoutubeFields = platforms.includes("youtube") && typeOfPost === "video";
+  const showInstagramFields = platforms.includes("instagram");
+  const showFacebookFields = platforms.includes("facebook");
+  const showLinkedinAccountType = platforms.includes("linkedin");
+  const showSchedule = typeOfPost !== "";
+
+  // Media label based on type
+  const getMediaLabel = () => {
+    if (typeOfPost === "image") return "Upload Image";
+    if (typeOfPost === "carousel") return "Upload Images (Multiple)";
+    if (typeOfPost === "video") return "Upload Video (landscape)";
+    if (typeOfPost === "shorts") return "Upload Video (portrait)";
+    if (typeOfPost === "pdf") return "Upload PDF";
+    return "Upload Media";
+  };
+
+  if (!typeOfPost) return null;
 
   return (
     <DashboardLayout>
       <div className="max-w-3xl mx-auto space-y-6">
         <div>
           <h1 className="text-3xl font-bold">Edit Post</h1>
-          <p className="text-muted-foreground">Update your post details</p>
+          <p className="text-muted-foreground">Update your social media post</p>
         </div>
 
         <Card>
@@ -164,222 +296,318 @@ export default function EditPost() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="title">Title *</Label>
-                  <Input
-                    id="title"
-                    name="title"
-                    placeholder="Post title"
-                    defaultValue={post.title}
-                    required
-                    maxLength={200}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="type_of_post">Type of Post</Label>
-                  <Select name="type_of_post" defaultValue={post.type_of_post || ""}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="text">Text Only</SelectItem>
-                      <SelectItem value="image">Image</SelectItem>
-                      <SelectItem value="video">Video</SelectItem>
-                      <SelectItem value="article">Article</SelectItem>
-                      <SelectItem value="pdf">PDF</SelectItem>
-                      <SelectItem value="shorts">Shorts/Reels</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
+              {/* Type of Post - Always visible */}
               <div className="space-y-2">
-                <Label>Platforms</Label>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {platformOptions.map((platform) => (
-                    <div key={platform.value} className="flex items-center space-x-2">
-                      <Checkbox
-                        id={platform.value}
-                        checked={platforms.includes(platform.value)}
-                        onCheckedChange={(checked) =>
-                          handlePlatformChange(platform.value, checked as boolean)
-                        }
-                      />
-                      <Label htmlFor={platform.value} className="cursor-pointer">
-                        {platform.label}
-                      </Label>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="account_type">Account Type</Label>
-                <Select name="account_type" defaultValue={post.account_type || ""}>
+                <Label htmlFor="typeOfPost">
+                  Type of Post <span className="text-destructive">*</span>
+                </Label>
+                <Select value={typeOfPost} onValueChange={setTypeOfPost} required>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select account type" />
+                    <SelectValue placeholder="Select..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="personal">Personal</SelectItem>
-                    <SelectItem value="business">Business</SelectItem>
-                    <SelectItem value="company">Company</SelectItem>
+                    <SelectItem value="onlyText">Only Text</SelectItem>
+                    <SelectItem value="image">Image</SelectItem>
+                    <SelectItem value="carousel">Carousel (Multiple Images)</SelectItem>
+                    <SelectItem value="video">Video (landscape)</SelectItem>
+                    <SelectItem value="shorts">Reels/Shorts (portrait)</SelectItem>
+                    <SelectItem value="article">Article</SelectItem>
+                    <SelectItem value="pdf">PDF</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="text">Content Text</Label>
-                <Textarea
-                  id="text"
-                  name="text"
-                  placeholder="Post content..."
-                  defaultValue={post.text || ""}
-                  rows={6}
-                  maxLength={5000}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  name="description"
-                  placeholder="Post description..."
-                  defaultValue={post.description || ""}
-                  rows={3}
-                  maxLength={2000}
-                />
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
+              {/* Platforms - Show when type is selected */}
+              {typeOfPost && (
                 <div className="space-y-2">
-                  <Label htmlFor="image">Image URL</Label>
-                  <Input
-                    id="image"
-                    name="image"
-                    type="url"
-                    placeholder="https://example.com/image.jpg"
-                    defaultValue={post.image || ""}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="video">Video URL</Label>
-                  <Input
-                    id="video"
-                    name="video"
-                    type="url"
-                    placeholder="https://example.com/video.mp4"
-                    defaultValue={post.video || ""}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="pdf">PDF URL</Label>
-                  <Input
-                    id="pdf"
-                    name="pdf"
-                    type="url"
-                    placeholder="https://example.com/document.pdf"
-                    defaultValue={post.pdf || ""}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="url">Article URL</Label>
-                  <Input
-                    id="url"
-                    name="url"
-                    type="url"
-                    placeholder="https://example.com/article"
-                    defaultValue={post.url || ""}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Tags</Label>
-                <div className="flex gap-2">
-                  <Input
-                    value={tagInput}
-                    onChange={(e) => setTagInput(e.target.value)}
-                    placeholder="Add a tag"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleAddTag();
-                      }
-                    }}
-                  />
-                  <Button type="button" onClick={handleAddTag} variant="outline">
-                    Add
-                  </Button>
-                </div>
-                {tags.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {tags.map((tag) => (
-                      <div
-                        key={tag}
-                        className="bg-secondary text-secondary-foreground px-3 py-1 rounded-full text-sm flex items-center gap-2"
-                      >
-                        {tag}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveTag(tag)}
-                          className="hover:text-destructive"
-                        >
-                          ×
-                        </button>
+                  <Label>
+                    Platforms <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {availablePlatforms.map((platform) => (
+                      <div key={platform} className="flex items-center space-x-2">
+                        <Checkbox
+                          id={platform.toLowerCase()}
+                          checked={platforms.includes(platform.toLowerCase())}
+                          onCheckedChange={(checked) =>
+                            handlePlatformChange(platform, checked as boolean)
+                          }
+                        />
+                        <Label htmlFor={platform.toLowerCase()} className="cursor-pointer">
+                          {platform}
+                        </Label>
                       </div>
                     ))}
                   </div>
-                )}
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="status">Status *</Label>
-                  <Select name="status" defaultValue={post.status} required>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="draft">Draft</SelectItem>
-                      <SelectItem value="scheduled">Scheduled</SelectItem>
-                      <SelectItem value="published">Published</SelectItem>
-                    </SelectContent>
-                  </Select>
                 </div>
+              )}
 
+              {/* LinkedIn Account Type - Show when LinkedIn is selected */}
+              {showLinkedinAccountType && (
                 <div className="space-y-2">
-                  <Label htmlFor="scheduled_at">Scheduled Date</Label>
+                  <Label>
+                    LinkedIn Account Type <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="flex gap-4">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="li-personal"
+                        checked={linkedinAccountType.includes("personal")}
+                        onCheckedChange={(checked) =>
+                          handleLinkedinAccountTypeChange("personal", checked as boolean)
+                        }
+                      />
+                      <Label htmlFor="li-personal" className="cursor-pointer">
+                        Personal
+                      </Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Checkbox
+                        id="li-company"
+                        checked={linkedinAccountType.includes("company")}
+                        onCheckedChange={(checked) =>
+                          handleLinkedinAccountTypeChange("company", checked as boolean)
+                        }
+                      />
+                      <Label htmlFor="li-company" className="cursor-pointer">
+                        Company
+                      </Label>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Text Content - Show for all except PDF */}
+              {showTextContent && (
+                <div className="space-y-2">
+                  <Label htmlFor="textContent">Text Content (Optional)</Label>
+                  <Textarea
+                    id="textContent"
+                    value={textContent}
+                    onChange={(e) => setTextContent(e.target.value)}
+                    rows={4}
+                    maxLength={2000}
+                    placeholder="Write your post text..."
+                  />
+                  <div className="text-xs text-muted-foreground text-right">
+                    {textContent.length}/2000
+                  </div>
+                </div>
+              )}
+
+              {/* Article Fields - Show only for article type */}
+              {showArticleFields && (
+                <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                  <h3 className="font-semibold">Article Fields</h3>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="articleTitle">
+                      Article Title <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="articleTitle"
+                      value={articleTitle}
+                      onChange={(e) => setArticleTitle(e.target.value)}
+                      placeholder="Enter title..."
+                      required={showArticleFields}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="articleDescription">
+                      Article Description <span className="text-destructive">*</span>
+                    </Label>
+                    <Textarea
+                      id="articleDescription"
+                      value={articleDescription}
+                      onChange={(e) => setArticleDescription(e.target.value)}
+                      rows={3}
+                      placeholder="Enter description..."
+                      required={showArticleFields}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="articleUrl">
+                      Article URL <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="articleUrl"
+                      type="url"
+                      value={articleUrl}
+                      onChange={(e) => setArticleUrl(e.target.value)}
+                      placeholder="https://..."
+                      required={showArticleFields}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Media Upload - Show for image, carousel, video, shorts, pdf */}
+              {showMediaUpload && (
+                <div className="space-y-2">
+                  <Label htmlFor="mediaFile">
+                    {getMediaLabel()} {existingMediaUrl && "(Optional - Leave empty to keep current)"}
+                  </Label>
+                  {existingMediaUrl && (
+                    <div className="mb-2 p-3 bg-muted rounded-md">
+                      <p className="text-sm text-muted-foreground">Current file:</p>
+                      <a 
+                        href={existingMediaUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary hover:underline break-all"
+                      >
+                        {existingMediaUrl}
+                      </a>
+                    </div>
+                  )}
                   <Input
-                    id="scheduled_at"
-                    name="scheduled_at"
-                    type="datetime-local"
-                    defaultValue={
-                      post.scheduled_at
-                        ? new Date(post.scheduled_at).toISOString().slice(0, 16)
-                        : ""
+                    id="mediaFile"
+                    type="file"
+                    onChange={(e) => setMediaFile(e.target.files?.[0] || null)}
+                    accept={
+                      typeOfPost === "image" || typeOfPost === "carousel"
+                        ? "image/*"
+                        : typeOfPost === "video" || typeOfPost === "shorts"
+                        ? "video/*"
+                        : typeOfPost === "pdf"
+                        ? "application/pdf"
+                        : "*"
                     }
                   />
+                  {mediaFile && (
+                    <p className="text-sm text-muted-foreground">
+                      New file selected: {mediaFile.name}
+                    </p>
+                  )}
+                  {(typeOfPost === "video") && (platforms.includes("facebook") || platforms.includes("instagram")) && (
+                    <p className="text-sm text-blue-600">
+                      (In Facebook and Instagram, Video will be posted as Reel)
+                    </p>
+                  )}
                 </div>
-              </div>
+              )}
 
-              <div className="flex gap-3">
-                <Button type="submit" disabled={loading}>
-                  {loading ? "Updating..." : "Update Post"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => navigate("/posts")}
-                >
-                  Cancel
-                </Button>
-              </div>
+              {/* YouTube Fields - Show when YouTube selected and type is video */}
+              {showYoutubeFields && (
+                <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                  <h3 className="font-semibold">YouTube Fields</h3>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="youtubeTitle">
+                      Video Title <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="youtubeTitle"
+                      value={youtubeTitle}
+                      onChange={(e) => setYoutubeTitle(e.target.value)}
+                      placeholder="Enter video title..."
+                      required={showYoutubeFields}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="youtubeDescription">
+                      Video Description <span className="text-destructive">*</span>
+                    </Label>
+                    <Textarea
+                      id="youtubeDescription"
+                      value={youtubeDescription}
+                      onChange={(e) => setYoutubeDescription(e.target.value)}
+                      rows={3}
+                      placeholder="Enter video description..."
+                      required={showYoutubeFields}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Instagram Fields - Show when Instagram selected */}
+              {showInstagramFields && (
+                <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                  <h3 className="font-semibold">Instagram Fields</h3>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="instagramTags">
+                      Instagram Tags <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="instagramTags"
+                      value={instagramTags}
+                      onChange={(e) => setInstagramTags(e.target.value)}
+                      placeholder="Enter username of Instagram profile to tag or mention..."
+                      required={showInstagramFields}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Facebook Fields - Show when Facebook selected */}
+              {showFacebookFields && (
+                <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                  <h3 className="font-semibold">Facebook Fields</h3>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="facebookTags">
+                      Facebook Tags <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="facebookTags"
+                      value={facebookTags}
+                      onChange={(e) => setFacebookTags(e.target.value)}
+                      placeholder="Enter URLs of Facebook Profile to tag or mention..."
+                      required={showFacebookFields}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Schedule - Show when type is selected */}
+              {showSchedule && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="status">
+                      Status <span className="text-destructive">*</span>
+                    </Label>
+                    <Select value={status} onValueChange={setStatus} required>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="scheduled">Scheduled</SelectItem>
+                        <SelectItem value="published">Published</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="scheduledAt">
+                      Schedule Date & Time <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="scheduledAt"
+                      type="datetime-local"
+                      value={scheduledAt}
+                      onChange={(e) => setScheduledAt(e.target.value)}
+                      required={showSchedule}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Submit Buttons */}
+              {typeOfPost && (
+                <div className="flex gap-3">
+                  <Button type="submit" disabled={loading || uploading}>
+                    {uploading ? "Uploading..." : loading ? "Updating..." : "Update Post"}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => navigate("/posts")}>
+                    Cancel
+                  </Button>
+                </div>
+              )}
             </form>
           </CardContent>
         </Card>
