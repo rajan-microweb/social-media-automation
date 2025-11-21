@@ -193,9 +193,27 @@ export default function EditPost() {
   };
 
   const uploadFile = async (file: File, folder: string): Promise<string> => {
+    // Validate file type
+    const allowedTypes: Record<string, string[]> = {
+      'images': ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
+      'videos': ['video/mp4', 'video/webm', 'video/quicktime'],
+      'pdfs': ['application/pdf']
+    };
+
+    const folderTypes = allowedTypes[folder] || [];
+    if (folderTypes.length > 0 && !folderTypes.includes(file.type)) {
+      throw new Error(`Invalid file type. Allowed types: ${folderTypes.join(', ')}`);
+    }
+
+    // Validate file size (10MB limit)
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      throw new Error('File size exceeds 10MB limit');
+    }
+
     const fileExt = file.name.split('.').pop();
     const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
-    const filePath = `${folder}/${fileName}`;
+    const filePath = `${user!.id}/${folder}/${fileName}`;
 
     const { error: uploadError } = await supabase.storage
       .from('post-media')
