@@ -100,7 +100,9 @@ export default function Stories() {
               <Card key={story.id}>
                 <CardHeader>
                   <div className="flex items-start justify-between">
-                    <CardTitle className="text-lg">{story.title || "Untitled"}</CardTitle>
+                    <CardTitle className="text-lg">
+                      {story.type_of_story ? story.type_of_story.charAt(0).toUpperCase() + story.type_of_story.slice(1) : "Story"}
+                    </CardTitle>
                     <Badge className={getStatusColor(story.status)}>
                       {story.status}
                     </Badge>
@@ -122,10 +124,22 @@ export default function Stories() {
                       {story.text}
                     </p>
                   )}
-                  {story.description && (
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {story.description}
-                    </p>
+                  {(story.image || story.video) && (
+                    <div className="mt-2">
+                      {story.image && (
+                        <img 
+                          src={story.image} 
+                          alt="Story preview" 
+                          className="w-full h-32 object-cover rounded"
+                        />
+                      )}
+                      {story.video && (
+                        <video 
+                          src={story.video} 
+                          className="w-full h-32 object-cover rounded"
+                        />
+                      )}
+                    </div>
                   )}
                   {story.scheduled_at && (
                     <p className="text-xs text-muted-foreground">

@@ -11,8 +11,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Sparkles } from "lucide-react";
 import { z } from "zod";
+import { AiPromptModal } from "@/components/AiPromptModal";
 
 const PLATFORM_MAP: Record<string, string[]> = {
   image: ["Facebook", "Instagram"],
@@ -20,13 +21,11 @@ const PLATFORM_MAP: Record<string, string[]> = {
 };
 
 const storySchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  description: z.string().optional(),
   type_of_story: z.string().min(1, "Type of story is required"),
   platforms: z.array(z.string()).min(1, "At least one platform is required"),
   text: z.string().optional(),
-  image: z.string().optional(),
-  video: z.string().optional(),
+  image: z.string().url().optional().or(z.literal("")),
+  video: z.string().url().optional().or(z.literal("")),
   scheduled_at: z.string().optional(),
 });
 
@@ -36,15 +35,21 @@ export default function CreateStory() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
 
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
   const [typeOfStory, setTypeOfStory] = useState("");
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [text, setText] = useState("");
   const [mediaFile, setMediaFile] = useState<File | null>(null);
-  const [mediaPreview, setMediaPreview] = useState<string>("");
   const [scheduledAt, setScheduledAt] = useState("");
   const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
+
+  // AI Modal state
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [aiModalField, setAiModalField] = useState<"text" | "image" | "video">("text");
+  const [aiModalTarget, setAiModalTarget] = useState<string>("");
+
+  // AI-generated URLs
+  const [imageUrl, setImageUrl] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
 
   useEffect(() => {
     if (typeOfStory) {
@@ -60,17 +65,29 @@ export default function CreateStory() {
     );
   };
 
-  const handleMediaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setMediaFile(file);
-      setMediaPreview(URL.createObjectURL(file));
+  const openAiModal = (field: "text" | "image" | "video", target: string) => {
+    setAiModalField(field);
+    setAiModalTarget(target);
+    setAiModalOpen(true);
+  };
+
+  const handleAiGenerate = async (content: string) => {
+    if (aiModalTarget === "textContent") {
+      setText(content);
+    } else if (aiModalTarget === "media") {
+      if (typeOfStory === "image") {
+        setImageUrl(content);
+      } else if (typeOfStory === "video") {
+        setVideoUrl(content);
+      }
+      setMediaFile(null);
+      toast.success("AI-generated media URL loaded");
     }
   };
 
-  const uploadFile = async (file: File, folder: string) => {
+  const uploadFile = async (file: File, folder: string): Promise<string> => {
     const fileExt = file.name.split('.').pop();
-    const fileName = `${Math.random()}.${fileExt}`;
+    const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
     const filePath = `${folder}/${fileName}`;
 
     const { error: uploadError } = await supabase.storage
@@ -79,11 +96,11 @@ export default function CreateStory() {
 
     if (uploadError) throw uploadError;
 
-    const { data } = supabase.storage
+    const { data: { publicUrl } } = supabase.storage
       .from('post-media')
       .getPublicUrl(filePath);
 
-    return data.publicUrl;
+    return publicUrl;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -91,38 +108,52 @@ export default function CreateStory() {
     setLoading(true);
 
     try {
-      let imageUrl = "";
-      let videoUrl = "";
+      let uploadedImageUrl = "";
+      let uploadedVideoUrl = "";
 
-      if (mediaFile) {
+      // Priority: AI URLs over file uploads
+      if (imageUrl || videoUrl) {
+        if (typeOfStory === "image") {
+          uploadedImageUrl = imageUrl;
+        } else if (typeOfStory === "video") {
+          uploadedVideoUrl = videoUrl;
+        }
+      } else if (mediaFile) {
         setUploading(true);
         const folder = typeOfStory === "video" ? "videos" : "images";
         const url = await uploadFile(mediaFile, folder);
         
         if (typeOfStory === "video") {
-          videoUrl = url;
+          uploadedVideoUrl = url;
         } else {
-          imageUrl = url;
+          uploadedImageUrl = url;
         }
         setUploading(false);
       }
 
       const storyData = {
-        title,
-        description: description || null,
         type_of_story: typeOfStory,
         platforms,
-        text: text || null,
-        image: imageUrl || null,
-        video: videoUrl || null,
-        scheduled_at: scheduledAt || null,
+        text: text || undefined,
+        image: uploadedImageUrl || "",
+        video: uploadedVideoUrl || "",
+        scheduled_at: scheduledAt || undefined,
         status: scheduledAt ? "scheduled" : "draft",
-        user_id: user!.id,
       };
 
       storySchema.parse(storyData);
 
-      const { error } = await supabase.from("stories").insert([storyData]);
+      const { error } = await supabase.from("stories").insert({
+        user_id: user!.id,
+        title: "",
+        type_of_story: storyData.type_of_story,
+        platforms: storyData.platforms,
+        text: storyData.text ?? null,
+        image: storyData.image || null,
+        video: storyData.video || null,
+        scheduled_at: storyData.scheduled_at ?? null,
+        status: storyData.status,
+      });
 
       if (error) throw error;
 
@@ -139,6 +170,12 @@ export default function CreateStory() {
 
   const showMediaUpload = typeOfStory && typeOfStory !== "";
 
+  const getMediaLabel = () => {
+    if (typeOfStory === "image") return "Upload Image";
+    if (typeOfStory === "video") return "Upload Video";
+    return "Upload Media";
+  };
+
   return (
     <DashboardLayout>
       <div className="max-w-2xl mx-auto space-y-6">
@@ -153,27 +190,6 @@ export default function CreateStory() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="title">Title *</Label>
-                <Input
-                  id="title"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Enter story title"
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
-                <Textarea
-                  id="description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Enter story description"
-                  rows={3}
-                />
-              </div>
 
               <div className="space-y-2">
                 <Label htmlFor="typeOfStory">Type of Story *</Label>
@@ -210,33 +226,112 @@ export default function CreateStory() {
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label htmlFor="text">Text Content</Label>
-                <Textarea
-                  id="text"
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  placeholder="Write your story text..."
-                  rows={3}
-                />
-              </div>
+              {/* Text Content */}
+              {typeOfStory && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="text">Text Content (Optional)</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openAiModal("text", "textContent")}
+                      className="h-8 gap-1"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      AI Generate
+                    </Button>
+                  </div>
+                  <Textarea
+                    id="text"
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    placeholder="Write your story text..."
+                    rows={4}
+                    maxLength={2000}
+                  />
+                  <div className="text-xs text-muted-foreground text-right">
+                    {text.length}/2000
+                  </div>
+                </div>
+              )}
 
+              {/* Media Upload */}
               {showMediaUpload && (
                 <div className="space-y-2">
-                  <Label htmlFor="media">Upload Media *</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="media">
+                      {getMediaLabel()} <span className="text-destructive">*</span>
+                    </Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openAiModal(typeOfStory === "video" ? "video" : "image", "media")}
+                      className="h-8 gap-1"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      AI Generate
+                    </Button>
+                  </div>
                   <Input
                     id="media"
                     type="file"
+                    onChange={(e) => {
+                      setMediaFile(e.target.files?.[0] || null);
+                      setImageUrl("");
+                      setVideoUrl("");
+                    }}
                     accept={typeOfStory === "video" ? "video/*" : "image/*"}
-                    onChange={handleMediaChange}
-                    required
+                    required={showMediaUpload && !imageUrl && !videoUrl}
                   />
-                  {mediaPreview && (
-                    <div className="mt-4">
-                      {typeOfStory === "video" ? (
-                        <video src={mediaPreview} controls className="max-w-full h-auto rounded" />
-                      ) : (
-                        <img src={mediaPreview} alt="Preview" className="max-w-full h-auto rounded" />
+                  {mediaFile && (
+                    <p className="text-sm text-muted-foreground">
+                      Selected: {mediaFile.name}
+                    </p>
+                  )}
+                  
+                  {/* Media Preview */}
+                  {(mediaFile || imageUrl || videoUrl) && (
+                    <div className="mt-3 p-3 border rounded-lg bg-muted/30">
+                      <p className="text-sm font-medium mb-2">Preview:</p>
+                      
+                      {typeOfStory === "image" && (
+                        <>
+                          {mediaFile && (
+                            <img 
+                              src={URL.createObjectURL(mediaFile)} 
+                              alt="Preview" 
+                              className="max-h-48 rounded-md object-contain"
+                            />
+                          )}
+                          {imageUrl && (
+                            <img 
+                              src={imageUrl} 
+                              alt="AI Generated Preview" 
+                              className="max-h-48 rounded-md object-contain"
+                            />
+                          )}
+                        </>
+                      )}
+                      
+                      {typeOfStory === "video" && (
+                        <>
+                          {mediaFile && (
+                            <video 
+                              src={URL.createObjectURL(mediaFile)} 
+                              controls 
+                              className="max-h-48 rounded-md"
+                            />
+                          )}
+                          {videoUrl && (
+                            <video 
+                              src={videoUrl} 
+                              controls 
+                              className="max-h-48 rounded-md"
+                            />
+                          )}
+                        </>
                       )}
                     </div>
                   )}
@@ -281,6 +376,13 @@ export default function CreateStory() {
           </CardContent>
         </Card>
       </div>
+
+      <AiPromptModal
+        open={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+        fieldType={aiModalField}
+        onGenerate={handleAiGenerate}
+      />
     </DashboardLayout>
   );
 }
