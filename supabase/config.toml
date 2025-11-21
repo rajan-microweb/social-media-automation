@@ -1,10 +1,1 @@
 project_id = "fcfdyivyjidzqjtanalq"
-
-[functions.get-posts]
-verify_jwt = false
-
-[functions.update-post]
-verify_jwt = false
-
-[functions.delete-media]
-verify_jwt = false

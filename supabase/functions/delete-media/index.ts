@@ -8,15 +8,36 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
+    // Authenticate the request
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: { Authorization: authHeader },
+      },
+    });
+
+    // Verify user is authenticated
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const body = await req.json();
     const { file_path, file_url } = body;
@@ -24,7 +45,6 @@ serve(async (req) => {
     // Extract file path from URL if provided
     let filePath = file_path;
     if (!filePath && file_url) {
-      // Extract path from URL like: https://xxx.supabase.co/storage/v1/object/public/post-media/images/filename.jpg
       const urlParts = file_url.split('/post-media/');
       if (urlParts.length > 1) {
         filePath = urlParts[1];
@@ -32,10 +52,34 @@ serve(async (req) => {
     }
 
     if (!filePath) {
-      console.error('Missing file_path or file_url in request');
       return new Response(
         JSON.stringify({ error: 'file_path or file_url is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate file path - prevent path traversal attacks
+    if (filePath.includes('..') || filePath.startsWith('/') || filePath.includes('\\')) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid file path' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Verify the file belongs to the user (files should be in user_id folder)
+    const pathParts = filePath.split('/');
+    if (pathParts.length < 2) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid file path format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const fileUserId = pathParts[0];
+    if (fileUserId !== user.id) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -50,12 +94,12 @@ serve(async (req) => {
     if (error) {
       console.error('Error deleting file:', error);
       return new Response(
-        JSON.stringify({ error: error.message }),
+        JSON.stringify({ error: 'Failed to delete file' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('File deleted successfully:', data);
+    console.log('File deleted successfully');
 
     return new Response(
       JSON.stringify({ success: true, deleted_files: data }),
@@ -63,9 +107,8 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error('Error in delete-media function:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return new Response(
-      JSON.stringify({ error: errorMessage }),
+      JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

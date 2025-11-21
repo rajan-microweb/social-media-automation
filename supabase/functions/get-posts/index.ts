@@ -6,17 +6,27 @@ const corsHeaders = {
 }
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    // Create Supabase client with service role key (bypasses RLS)
+    // Authenticate the request
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       {
+        global: {
+          headers: { Authorization: authHeader },
+        },
         auth: {
           autoRefreshToken: false,
           persistSession: false
@@ -24,22 +34,48 @@ Deno.serve(async (req) => {
       }
     );
 
-    // Parse query parameters
+    // Verify user is authenticated
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Parse and validate query parameters
     const url = new URL(req.url);
     const status = url.searchParams.get('status');
-    const limit = url.searchParams.get('limit') || '100';
+    const limitParam = url.searchParams.get('limit') || '100';
     const user_id = url.searchParams.get('user_id');
+
+    // Validate limit parameter
+    const limit = parseInt(limitParam);
+    if (isNaN(limit) || limit < 1 || limit > 1000) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid limit parameter' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate status if provided
+    const validStatuses = ['draft', 'scheduled', 'published'];
+    if (status && !validStatuses.includes(status)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid status parameter' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     console.log('Fetching posts with params:', { status, limit, user_id });
 
-    // Build query
+    // Build query - RLS will automatically filter to user's own posts
     let query = supabaseClient
       .from('posts')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(parseInt(limit));
+      .limit(limit);
 
-    // Add filters if provided
     if (status) {
       query = query.eq('status', status);
     }
@@ -47,12 +83,14 @@ Deno.serve(async (req) => {
       query = query.eq('user_id', user_id);
     }
 
-    // Execute query
     const { data: posts, error } = await query;
 
     if (error) {
       console.error('Error fetching posts:', error);
-      throw error;
+      return new Response(
+        JSON.stringify({ error: 'Failed to fetch posts' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     console.log(`Successfully fetched ${posts?.length || 0} posts`);
@@ -71,12 +109,8 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Error in get-posts function:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return new Response(
-      JSON.stringify({ 
-        success: false, 
-        error: errorMessage 
-      }),
+      JSON.stringify({ error: 'Internal server error' }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         status: 500,
