@@ -1,4 +1,4 @@
-import { LayoutDashboard, FileText, Users, LogOut } from "lucide-react";
+import { LayoutDashboard, FileText, Image, UserCircle, Users, LogOut } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -22,7 +22,8 @@ export function AppSidebar() {
   const mainItems = [
     { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
     { title: "Posts", url: "/posts", icon: FileText },
-    { title: "Stories", url: "/stories", icon: FileText },
+    { title: "Stories", url: "/stories", icon: Image },
+    { title: "Accounts", url: "/accounts", icon: UserCircle },
   ];
 
   const adminItems = isAdmin

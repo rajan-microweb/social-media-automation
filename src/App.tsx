@@ -15,6 +15,7 @@ import Stories from "./pages/Stories";
 import CreateStory from "./pages/CreateStory";
 import EditStory from "./pages/EditStory";
 import AdminUsers from "./pages/AdminUsers";
+import Accounts from "./pages/Accounts";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -82,6 +83,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <EditStory />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/accounts"
+              element={
+                <ProtectedRoute>
+                  <Accounts />
                 </ProtectedRoute>
               }
             />
