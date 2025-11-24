@@ -3,8 +3,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Facebook, Instagram, Linkedin, Twitter } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface SocialAccount {
   id: string;
@@ -51,32 +52,83 @@ export default function Accounts() {
     },
   ]);
 
+  useEffect(() => {
+    const checkExistingIntegrations = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from("platform_integrations")
+        .select("platform_name")
+        .eq("user_id", user.id);
+
+      if (error) {
+        console.error("Error fetching integrations:", error);
+        return;
+      }
+
+      if (data) {
+        setAccounts((prev) =>
+          prev.map((acc) => {
+            const integration = data.find(
+              (d) => d.platform_name === acc.platform.toLowerCase()
+            );
+            return integration
+              ? { ...acc, isConnected: true, accountName: `${acc.platform} Account` }
+              : acc;
+          })
+        );
+      }
+    };
+
+    checkExistingIntegrations();
+
+    // Set up realtime subscription
+    const channel = supabase
+      .channel("platform-integrations-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "platform_integrations",
+        },
+        (payload) => {
+          if (payload.new && typeof payload.new === "object" && "platform_name" in payload.new) {
+            const platformName = payload.new.platform_name as string;
+            setAccounts((prev) =>
+              prev.map((acc) =>
+                acc.platform.toLowerCase() === platformName
+                  ? { ...acc, isConnected: true, accountName: `${acc.platform} Account` }
+                  : acc
+              )
+            );
+            toast.success(`${platformName.charAt(0).toUpperCase() + platformName.slice(1)} connected successfully!`);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   const handleConnect = (accountId: string, platform: string) => {
     if (platform === "LinkedIn") {
       const oauthUrl = "https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=772ig6g3u4jlcp&redirect_uri=https://n8n.srv1044933.hstgr.cloud/webhook/linkedin-callback&scope=w_member_social%20w_organization_social%20openid%20profile%20email";
       
-      // Open OAuth in new tab
-      const authWindow = window.open(oauthUrl, "_blank");
+      // Open OAuth in popup window
+      const width = 600;
+      const height = 700;
+      const left = window.screen.width / 2 - width / 2;
+      const top = window.screen.height / 2 - height / 2;
       
-      // Poll to check if authentication is complete
-      const checkAuth = setInterval(() => {
-        const linkedInConnected = localStorage.getItem("linkedin_connected");
-        if (linkedInConnected === "true") {
-          setAccounts((prev) =>
-            prev.map((acc) =>
-              acc.platform === "LinkedIn"
-                ? { ...acc, isConnected: true, accountName: "LinkedIn Account" }
-                : acc
-            )
-          );
-          localStorage.removeItem("linkedin_connected");
-          toast.success("Successfully connected to LinkedIn!");
-          clearInterval(checkAuth);
-        }
-      }, 1000);
-      
-      // Stop checking after 5 minutes
-      setTimeout(() => clearInterval(checkAuth), 300000);
+      window.open(
+        oauthUrl,
+        "LinkedIn OAuth",
+        `width=${width},height=${height},left=${left},top=${top}`
+      );
       
       toast.success("Opening LinkedIn authentication...");
     } else {
@@ -138,9 +190,9 @@ export default function Accounts() {
                     <Button
                       variant="outline"
                       className="w-full"
-                      onClick={() => handleDisconnect(account.id, account.platform)}
+                      disabled
                     >
-                      Disconnect
+                      ✅ Connected
                     </Button>
                   ) : (
                     <Button
