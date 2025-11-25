@@ -63,6 +63,8 @@ export default function CreatePost() {
   const [status, setStatus] = useState("draft");
   const [scheduledAt, setScheduledAt] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [articleThumbnailFile, setArticleThumbnailFile] = useState<File | null>(null);
+  const [articleThumbnailUrl, setArticleThumbnailUrl] = useState("");
 
   // AI Modal state
   const [aiModalOpen, setAiModalOpen] = useState(false);
@@ -129,6 +131,10 @@ export default function CreatePost() {
       setYoutubeTitle(content);
     } else if (aiModalTarget === "youtubeDescription") {
       setYoutubeDescription(content);
+    } else if (aiModalTarget === "articleThumbnail") {
+      setArticleThumbnailUrl(content);
+      setArticleThumbnailFile(null);
+      toast.success("AI-generated thumbnail URL loaded");
     } else if (aiModalTarget === "media") {
       // For media, content is a URL from AI - store it directly
       if (typeOfPost === "image" || typeOfPost === "carousel") {
@@ -169,6 +175,7 @@ export default function CreatePost() {
     try {
       // Check for AI-generated URLs first, otherwise upload file if present
       let uploadedUrl = null;
+      let thumbnailUrl = null;
       
       // Priority: AI URLs over file uploads
       if (imageUrl || videoUrl || pdfUrl) {
@@ -194,6 +201,15 @@ export default function CreatePost() {
         }
       }
 
+      // Handle article thumbnail upload
+      if (typeOfPost === "article") {
+        if (articleThumbnailUrl) {
+          thumbnailUrl = articleThumbnailUrl;
+        } else if (articleThumbnailFile) {
+          thumbnailUrl = await uploadFile(articleThumbnailFile, "images");
+        }
+      }
+
       // Build account_type string
       let accountTypeValue = "";
       if (platforms.includes("linkedin") && linkedinAccountType.length > 0) {
@@ -208,6 +224,8 @@ export default function CreatePost() {
         image:
           typeOfPost === "image" || typeOfPost === "carousel"
             ? uploadedUrl || ""
+            : typeOfPost === "article"
+            ? thumbnailUrl || ""
             : "",
         video:
           typeOfPost === "video" || typeOfPost === "shorts"
@@ -413,21 +431,9 @@ export default function CreatePost() {
                   <h3 className="font-semibold">Article Fields</h3>
                   
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="articleTitle">
-                        Article Title <span className="text-destructive">*</span>
-                      </Label>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openAiModal("text", "articleTitle")}
-                        className="h-8 gap-1"
-                      >
-                        <Sparkles className="h-4 w-4" />
-                        AI
-                      </Button>
-                    </div>
+                    <Label htmlFor="articleTitle">
+                      Article Title <span className="text-destructive">*</span>
+                    </Label>
                     <Input
                       id="articleTitle"
                       value={articleTitle}
@@ -438,21 +444,9 @@ export default function CreatePost() {
                   </div>
 
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="articleDescription">
-                        Article Description <span className="text-destructive">*</span>
-                      </Label>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openAiModal("text", "articleDescription")}
-                        className="h-8 gap-1"
-                      >
-                        <Sparkles className="h-4 w-4" />
-                        AI
-                      </Button>
-                    </div>
+                    <Label htmlFor="articleDescription">
+                      Article Description <span className="text-destructive">*</span>
+                    </Label>
                     <Textarea
                       id="articleDescription"
                       value={articleDescription}
@@ -475,6 +469,44 @@ export default function CreatePost() {
                       placeholder="https://..."
                       required={showArticleFields}
                     />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="articleThumbnail">Upload Thumbnail (Optional)</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openAiModal("image", "articleThumbnail")}
+                        className="h-8 gap-1"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        AI Generate
+                      </Button>
+                    </div>
+                    <Input
+                      id="articleThumbnail"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setArticleThumbnailFile(file);
+                          setArticleThumbnailUrl(""); // Clear AI URL if file is selected
+                        }
+                      }}
+                    />
+                    {(articleThumbnailFile || articleThumbnailUrl) && (
+                      <div className="mt-2">
+                        <p className="text-sm text-muted-foreground mb-2">Preview:</p>
+                        <img
+                          src={articleThumbnailUrl || (articleThumbnailFile ? URL.createObjectURL(articleThumbnailFile) : "")}
+                          alt="Article thumbnail preview"
+                          className="max-w-xs rounded-lg border"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
