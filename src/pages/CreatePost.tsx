@@ -15,6 +15,27 @@ import { z } from "zod";
 import { Sparkles } from "lucide-react";
 import { AiPromptModal } from "@/components/AiPromptModal";
 
+interface LinkedInCredentials {
+  personal_info: {
+    name: string;
+    avatar_url: string;
+    linkedin_id: string;
+  };
+  company_info: Array<{
+    company_name: string;
+    company_id: string;
+    company_logo: string;
+  }>;
+  access_token: string;
+}
+
+interface LinkedInAccount {
+  id: string;
+  name: string;
+  avatar: string;
+  type: 'personal' | 'company';
+}
+
 // Platform configuration based on post type
 const PLATFORM_MAP: Record<string, string[]> = {
   onlyText: ["Facebook", "LinkedIn"],
@@ -51,6 +72,8 @@ export default function CreatePost() {
   const [typeOfPost, setTypeOfPost] = useState("");
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [linkedinAccountType, setLinkedinAccountType] = useState<string[]>([]);
+  const [linkedinAccounts, setLinkedinAccounts] = useState<LinkedInAccount[]>([]);
+  const [loadingLinkedInAccounts, setLoadingLinkedInAccounts] = useState(false);
   const [textContent, setTextContent] = useState("");
   const [articleTitle, setArticleTitle] = useState("");
   const [articleDescription, setArticleDescription] = useState("");
@@ -87,6 +110,7 @@ export default function CreatePost() {
       // Reset selected platforms
       setPlatforms([]);
       setLinkedinAccountType([]);
+      setLinkedinAccounts([]);
       // Reset platform-specific fields
       setYoutubeTitle("");
       setYoutubeDescription("");
@@ -98,6 +122,58 @@ export default function CreatePost() {
     }
   }, [typeOfPost]);
 
+  // Fetch LinkedIn accounts when LinkedIn is selected
+  useEffect(() => {
+    const fetchLinkedInAccounts = async () => {
+      if (!platforms.includes("linkedin") || !user) return;
+      
+      setLoadingLinkedInAccounts(true);
+      try {
+        const { data, error } = await supabase.functions.invoke('get-platform-integration', {
+          body: { platform_name: 'linkedin', user_id: user.id }
+        });
+
+        if (error) throw error;
+
+        if (data?.data && data.data.length > 0) {
+          const credentials = data.data[0].credentials as LinkedInCredentials;
+          const accounts: LinkedInAccount[] = [];
+
+          // Add personal account
+          if (credentials.personal_info) {
+            accounts.push({
+              id: credentials.personal_info.linkedin_id,
+              name: credentials.personal_info.name,
+              avatar: credentials.personal_info.avatar_url,
+              type: 'personal'
+            });
+          }
+
+          // Add company accounts
+          if (credentials.company_info) {
+            credentials.company_info.forEach(company => {
+              accounts.push({
+                id: company.company_id,
+                name: company.company_name,
+                avatar: company.company_logo,
+                type: 'company'
+              });
+            });
+          }
+
+          setLinkedinAccounts(accounts);
+        }
+      } catch (error) {
+        console.error('Error fetching LinkedIn accounts:', error);
+        toast.error("Failed to load LinkedIn accounts");
+      } finally {
+        setLoadingLinkedInAccounts(false);
+      }
+    };
+
+    fetchLinkedInAccounts();
+  }, [platforms, user]);
+
   const handlePlatformChange = (platform: string, checked: boolean) => {
     if (checked) {
       setPlatforms([...platforms, platform.toLowerCase()]);
@@ -106,11 +182,11 @@ export default function CreatePost() {
     }
   };
 
-  const handleLinkedinAccountTypeChange = (type: string, checked: boolean) => {
-    if (checked) {
-      setLinkedinAccountType([...linkedinAccountType, type]);
+  const handleLinkedinAccountTypeChange = (accountId: string) => {
+    if (linkedinAccountType.includes(accountId)) {
+      setLinkedinAccountType(linkedinAccountType.filter((id) => id !== accountId));
     } else {
-      setLinkedinAccountType(linkedinAccountType.filter((t) => t !== type));
+      setLinkedinAccountType([...linkedinAccountType, accountId]);
     }
   };
 
@@ -366,32 +442,29 @@ export default function CreatePost() {
                   <Label>
                     LinkedIn Account Type <span className="text-destructive">*</span>
                   </Label>
-                  <div className="flex gap-4">
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="li-personal"
-                        checked={linkedinAccountType.includes("personal")}
-                        onCheckedChange={(checked) =>
-                          handleLinkedinAccountTypeChange("personal", checked as boolean)
-                        }
-                      />
-                      <Label htmlFor="li-personal" className="cursor-pointer">
-                        Personal
-                      </Label>
+                  {loadingLinkedInAccounts ? (
+                    <div className="text-sm text-muted-foreground">Loading accounts...</div>
+                  ) : linkedinAccounts.length === 0 ? (
+                    <div className="text-sm text-muted-foreground">
+                      Please connect your LinkedIn account first from the Accounts page.
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="li-company"
-                        checked={linkedinAccountType.includes("company")}
-                        onCheckedChange={(checked) =>
-                          handleLinkedinAccountTypeChange("company", checked as boolean)
-                        }
-                      />
-                      <Label htmlFor="li-company" className="cursor-pointer">
-                        Company
-                      </Label>
+                  ) : (
+                    <div className="space-y-2">
+                      {linkedinAccounts.map((account) => (
+                        <div key={account.id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={`li-${account.id}`}
+                            checked={linkedinAccountType.includes(account.id)}
+                            onCheckedChange={() => handleLinkedinAccountTypeChange(account.id)}
+                          />
+                          <label htmlFor={`li-${account.id}`} className="text-sm cursor-pointer flex items-center gap-2">
+                            <img src={account.avatar} alt={account.name} className="w-6 h-6 rounded-full" />
+                            <span>{account.name} ({account.type === 'personal' ? 'Personal' : 'Company'})</span>
+                          </label>
+                        </div>
+                      ))}
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
 
