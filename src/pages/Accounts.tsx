@@ -174,6 +174,41 @@ export default function Accounts() {
     }
   };
 
+  const handleDisconnect = async (platformName: string) => {
+    if (!user?.id) {
+      toast.error("Please log in to disconnect your account");
+      return;
+    }
+
+    try {
+      const platformKey = Object.keys(platformConfigs).find(
+        key => platformConfigs[key].name === platformName
+      );
+
+      if (!platformKey) {
+        toast.error("Invalid platform");
+        return;
+      }
+
+      const { error } = await supabase
+        .from("platform_integrations")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("platform_name", platformKey);
+
+      if (error) {
+        console.error("Error disconnecting platform:", error);
+        toast.error("Failed to disconnect platform");
+        return;
+      }
+
+      toast.success(`${platformName} disconnected successfully`);
+    } catch (error) {
+      console.error("Error disconnecting platform:", error);
+      toast.error("Failed to disconnect platform");
+    }
+  };
+
   // Group accounts by platform
   const accountsByPlatform = connectedAccounts.reduce((acc, account) => {
     if (!acc[account.platform]) {
@@ -239,12 +274,22 @@ export default function Accounts() {
                     </p>
                   </div>
                 </div>
-                <Button
-                  variant={platformAccounts.length > 0 ? "outline" : "default"}
-                  onClick={() => handleConnect(platformName)}
-                >
-                  {platformAccounts.length > 0 ? '+ Add Account' : 'Connect'}
-                </Button>
+                <div className="flex items-center gap-2">
+                  {platformAccounts.length > 0 && (
+                    <Button
+                      variant="destructive"
+                      onClick={() => handleDisconnect(platformName)}
+                    >
+                      Disconnect
+                    </Button>
+                  )}
+                  <Button
+                    variant={platformAccounts.length > 0 ? "outline" : "default"}
+                    onClick={() => handleConnect(platformName)}
+                  >
+                    {platformAccounts.length > 0 ? '+ Add Account' : 'Connect'}
+                  </Button>
+                </div>
               </div>
 
               {platformAccounts.length > 0 ? (
