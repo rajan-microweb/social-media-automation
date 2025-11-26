@@ -16,6 +16,7 @@ import CreateStory from "./pages/CreateStory";
 import EditStory from "./pages/EditStory";
 import AdminUsers from "./pages/AdminUsers";
 import Accounts from "./pages/Accounts";
+import Profile from "./pages/Profile";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -91,6 +92,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Accounts />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <Profile />
                 </ProtectedRoute>
               }
             />
