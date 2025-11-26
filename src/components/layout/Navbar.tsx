@@ -10,24 +10,26 @@ export function Navbar() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [profileName, setProfileName] = useState<string>("");
+  const [avatarUrl, setAvatarUrl] = useState<string>("");
 
   useEffect(() => {
     if (user) {
-      fetchProfileName();
+      fetchProfile();
     }
   }, [user]);
 
-  const fetchProfileName = async () => {
+  const fetchProfile = async () => {
     if (!user) return;
 
     const { data } = await supabase
       .from("profiles")
-      .select("name")
+      .select("name, avatar_url")
       .eq("id", user.id)
       .single();
 
     if (data) {
       setProfileName(data.name);
+      setAvatarUrl(data.avatar_url || "");
     }
   };
 
@@ -55,7 +57,7 @@ export function Navbar() {
           onClick={() => navigate("/profile")}
         >
           <Avatar className="h-8 w-8">
-            <AvatarImage src="" alt={profileName} />
+            <AvatarImage src={avatarUrl} alt={profileName} />
             <AvatarFallback className="text-xs">
               {getInitials(profileName)}
             </AvatarFallback>
