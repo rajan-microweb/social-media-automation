@@ -14,6 +14,16 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { Sparkles } from "lucide-react";
 import { AiPromptModal } from "@/components/AiPromptModal";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface LinkedInCredentials {
   personal_info: {
@@ -76,6 +86,12 @@ export default function EditPost() {
   const [linkedinAccountType, setLinkedinAccountType] = useState<string[]>([]);
   const [linkedinAccounts, setLinkedinAccounts] = useState<LinkedInAccount[]>([]);
   const [loadingLinkedInAccounts, setLoadingLinkedInAccounts] = useState(false);
+  
+  // Platform connection state
+  const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
+  const [showConnectionAlert, setShowConnectionAlert] = useState(false);
+  const [alertMessage, setAlertMessage] = useState("");
+  const [alertPlatform, setAlertPlatform] = useState("");
   const [textContent, setTextContent] = useState("");
   const [articleTitle, setArticleTitle] = useState("");
   const [articleDescription, setArticleDescription] = useState("");
@@ -104,6 +120,25 @@ export default function EditPost() {
 
   // Available platforms based on post type
   const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
+
+  // Fetch connected platforms on mount
+  useEffect(() => {
+    const fetchConnectedPlatforms = async () => {
+      if (!user) return;
+      
+      const { data } = await supabase
+        .from("platform_integrations")
+        .select("platform_name")
+        .eq("user_id", user.id);
+      
+      if (data) {
+        const platforms = data.map(p => p.platform_name);
+        setConnectedPlatforms(platforms);
+      }
+    };
+    
+    fetchConnectedPlatforms();
+  }, [user]);
 
   // Fetch existing post data
   useEffect(() => {
@@ -228,6 +263,14 @@ export default function EditPost() {
   }, [platforms, user]);
 
   const handlePlatformChange = (platform: string, checked: boolean) => {
+    // Check if platform is connected before allowing selection
+    if (checked && !connectedPlatforms.includes(platform)) {
+      setAlertMessage(`Please connect your ${platform} account first to select this platform.`);
+      setAlertPlatform(platform);
+      setShowConnectionAlert(true);
+      return;
+    }
+    
     if (checked) {
       setPlatforms([...platforms, platform.toLowerCase()]);
     } else {
@@ -959,6 +1002,22 @@ export default function EditPost() {
         onGenerate={handleAiGenerate}
         fieldType={aiModalField}
       />
+      
+      <AlertDialog open={showConnectionAlert} onOpenChange={setShowConnectionAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Account Connection Required</AlertDialogTitle>
+            <AlertDialogDescription>
+              {alertMessage}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => navigate("/accounts")}>
+              Go to Accounts
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }
