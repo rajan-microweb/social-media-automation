@@ -8,82 +8,122 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
-interface SocialAccount {
+interface ConnectedAccount {
   id: string;
   platform: string;
+  accountId: string;
+  accountName: string;
+  accountType: 'personal' | 'company';
+  avatarUrl: string | null;
+  platformIcon: React.ComponentType<{ className?: string }>;
+  platformColor: string;
+}
+
+interface PlatformConfig {
+  name: string;
   icon: React.ComponentType<{ className?: string }>;
-  accountName: string | null;
-  isConnected: boolean;
   color: string;
 }
 
 export default function Accounts() {
   const { user } = useAuth();
-  const [accounts, setAccounts] = useState<SocialAccount[]>([
-    {
-      id: "1",
-      platform: "Facebook",
-      icon: Facebook,
-      accountName: null,
-      isConnected: false,
-      color: "text-[#1877F2]",
-    },
-    {
-      id: "2",
-      platform: "Instagram",
-      icon: Instagram,
-      accountName: null,
-      isConnected: false,
-      color: "text-[#E4405F]",
-    },
-    {
-      id: "3",
-      platform: "LinkedIn",
+  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const platformConfigs: Record<string, PlatformConfig> = {
+    linkedin: {
+      name: "LinkedIn",
       icon: Linkedin,
-      accountName: null,
-      isConnected: false,
       color: "text-[#0A66C2]",
     },
-    {
-      id: "4",
-      platform: "Twitter",
+    facebook: {
+      name: "Facebook",
+      icon: Facebook,
+      color: "text-[#1877F2]",
+    },
+    instagram: {
+      name: "Instagram",
+      icon: Instagram,
+      color: "text-[#E4405F]",
+    },
+    twitter: {
+      name: "Twitter",
       icon: Twitter,
-      accountName: null,
-      isConnected: false,
       color: "text-[#1DA1F2]",
     },
-  ]);
+  };
 
   useEffect(() => {
-    const checkExistingIntegrations = async () => {
+    const fetchConnectedAccounts = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        setLoading(false);
+        return;
+      }
 
       const { data, error } = await supabase
         .from("platform_integrations")
-        .select("platform_name")
-        .eq("user_id", user.id);
+        .select("platform_name, credentials")
+        .eq("user_id", user.id)
+        .eq("status", "active");
 
       if (error) {
         console.error("Error fetching integrations:", error);
+        setLoading(false);
         return;
       }
 
       if (data) {
-        setAccounts((prev) =>
-          prev.map((acc) => {
-            const integration = data.find(
-              (d) => d.platform_name === acc.platform.toLowerCase()
-            );
-            return integration
-              ? { ...acc, isConnected: true, accountName: `${acc.platform} Account` }
-              : acc;
-          })
-        );
+        const accounts: ConnectedAccount[] = [];
+
+        data.forEach((integration) => {
+          const platformName = integration.platform_name.toLowerCase();
+          const config = platformConfigs[platformName];
+          
+          if (!config) return;
+
+          const credentials = integration.credentials as any;
+
+          if (platformName === "linkedin" && credentials) {
+            // Add personal account if exists
+            if (credentials.personal_info) {
+              accounts.push({
+                id: `${platformName}-personal-${credentials.personal_info.sub}`,
+                platform: config.name,
+                accountId: credentials.personal_info.sub,
+                accountName: credentials.personal_info.name || "LinkedIn User",
+                accountType: "personal",
+                avatarUrl: credentials.personal_info.picture || null,
+                platformIcon: config.icon,
+                platformColor: config.color,
+              });
+            }
+
+            // Add company accounts
+            if (credentials.company_info && Array.isArray(credentials.company_info)) {
+              credentials.company_info.forEach((company: any) => {
+                accounts.push({
+                  id: `${platformName}-company-${company.id}`,
+                  platform: config.name,
+                  accountId: company.id,
+                  accountName: company.localizedName || company.name || "Company",
+                  accountType: "company",
+                  avatarUrl: company.logoUrl || null,
+                  platformIcon: config.icon,
+                  platformColor: config.color,
+                });
+              });
+            }
+          }
+          // Add similar parsing for other platforms if needed in the future
+        });
+
+        setConnectedAccounts(accounts);
       }
+      setLoading(false);
     };
 
-    checkExistingIntegrations();
+    fetchConnectedAccounts();
 
     // Set up realtime subscription
     const channel = supabase
@@ -95,18 +135,10 @@ export default function Accounts() {
           schema: "public",
           table: "platform_integrations",
         },
-        (payload) => {
-          if (payload.new && typeof payload.new === "object" && "platform_name" in payload.new) {
-            const platformName = payload.new.platform_name as string;
-            setAccounts((prev) =>
-              prev.map((acc) =>
-                acc.platform.toLowerCase() === platformName
-                  ? { ...acc, isConnected: true, accountName: `${acc.platform} Account` }
-                  : acc
-              )
-            );
-            toast.success(`${platformName.charAt(0).toUpperCase() + platformName.slice(1)} connected successfully!`);
-          }
+        () => {
+          // Refetch accounts when changes occur
+          fetchConnectedAccounts();
+          toast.success("Account connected successfully!");
         }
       )
       .subscribe();
@@ -116,7 +148,7 @@ export default function Accounts() {
     };
   }, []);
 
-  const handleConnect = (accountId: string, platform: string) => {
+  const handleConnect = (platform: string) => {
     if (platform === "LinkedIn") {
       if (!user?.id) {
         toast.error("Please log in to connect your account");
@@ -125,7 +157,6 @@ export default function Accounts() {
 
       const oauthUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=772ig6g3u4jlcp&redirect_uri=https://n8n.srv1044933.hstgr.cloud/webhook/linkedin-callback&state=${user.id}&scope=openid%20profile%20email%20w_member_social%20w_organization_social%20rw_organization_admin%20r_organization_social`;
       
-      // Open OAuth in popup window
       const width = 600;
       const height = 700;
       const left = window.screen.width / 2 - width / 2;
@@ -143,20 +174,39 @@ export default function Accounts() {
     }
   };
 
-  const handleDisconnect = (accountId: string, platform: string) => {
-    setAccounts((prev) =>
-      prev.map((acc) =>
-        acc.id === accountId
-          ? { ...acc, isConnected: false, accountName: null }
-          : acc
-      )
+  // Group accounts by platform
+  const accountsByPlatform = connectedAccounts.reduce((acc, account) => {
+    if (!acc[account.platform]) {
+      acc[account.platform] = [];
+    }
+    acc[account.platform].push(account);
+    return acc;
+  }, {} as Record<string, ConnectedAccount[]>);
+
+  // Get all platform names
+  const allPlatforms = Object.values(platformConfigs).map(p => p.name);
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Social Media Accounts</h1>
+            <p className="text-muted-foreground mt-2">
+              Connect and manage your social media accounts
+            </p>
+          </div>
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">Loading accounts...</p>
+          </div>
+        </div>
+      </DashboardLayout>
     );
-    toast.success(`Disconnected from ${platform}`);
-  };
+  }
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
+      <div className="space-y-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Social Media Accounts</h1>
           <p className="text-muted-foreground mt-2">
@@ -164,56 +214,101 @@ export default function Accounts() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {accounts.map((account) => {
-            const Icon = account.icon;
-            return (
-              <Card
-                key={account.id}
-                className="hover:shadow-lg transition-all duration-300 border-border/50"
-              >
-                <CardHeader className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="p-3 rounded-lg bg-muted/50">
-                      <Icon className={`h-8 w-8 ${account.color}`} />
-                    </div>
-                    {account.isConnected && (
-                      <Badge variant="secondary" className="bg-green-500/10 text-green-600 hover:bg-green-500/20">
-                        Connected
-                      </Badge>
-                    )}
+        {/* Display accounts grouped by platform */}
+        {allPlatforms.map((platformName) => {
+          const platformKey = Object.keys(platformConfigs).find(
+            key => platformConfigs[key].name === platformName
+          );
+          const config = platformKey ? platformConfigs[platformKey] : null;
+          const platformAccounts = accountsByPlatform[platformName] || [];
+          const Icon = config?.icon || Linkedin;
+
+          return (
+            <div key={platformName} className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-muted/50">
+                    <Icon className={`h-6 w-6 ${config?.color || 'text-foreground'}`} />
                   </div>
                   <div>
-                    <CardTitle className="text-xl">{account.platform}</CardTitle>
-                    <CardDescription className="mt-1">
-                      {account.isConnected && account.accountName
-                        ? account.accountName
-                        : "Not Connected"}
-                    </CardDescription>
+                    <h2 className="text-xl font-semibold">{platformName}</h2>
+                    <p className="text-sm text-muted-foreground">
+                      {platformAccounts.length > 0 
+                        ? `${platformAccounts.length} account${platformAccounts.length > 1 ? 's' : ''} connected`
+                        : 'Not connected'}
+                    </p>
                   </div>
-                </CardHeader>
-                <CardContent>
-                  {account.isConnected ? (
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      disabled
-                    >
-                      ✅ Connected
-                    </Button>
-                  ) : (
-                    <Button
-                      className="w-full"
-                      onClick={() => handleConnect(account.id, account.platform)}
-                    >
-                      Connect
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                </div>
+                <Button
+                  variant={platformAccounts.length > 0 ? "outline" : "default"}
+                  onClick={() => handleConnect(platformName)}
+                >
+                  {platformAccounts.length > 0 ? '+ Add Account' : 'Connect'}
+                </Button>
+              </div>
+
+              {platformAccounts.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {platformAccounts.map((account) => {
+                    const AccountIcon = account.platformIcon;
+                    return (
+                      <Card
+                        key={account.id}
+                        className="hover:shadow-lg transition-all duration-300 border-border/50"
+                      >
+                        <CardHeader className="space-y-3">
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-3">
+                              {account.avatarUrl ? (
+                                <img
+                                  src={account.avatarUrl}
+                                  alt={account.accountName}
+                                  className="h-12 w-12 rounded-full object-cover border-2 border-border"
+                                />
+                              ) : (
+                                <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                                  <AccountIcon className={`h-6 w-6 ${account.platformColor}`} />
+                                </div>
+                              )}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <AccountIcon className={`h-4 w-4 ${account.platformColor} flex-shrink-0`} />
+                                  <Badge 
+                                    variant="secondary" 
+                                    className="text-xs"
+                                  >
+                                    {account.accountType === 'personal' ? 'Personal' : 'Company'}
+                                  </Badge>
+                                </div>
+                                <h3 className="font-semibold text-sm truncate">
+                                  {account.accountName}
+                                </h3>
+                              </div>
+                            </div>
+                          </div>
+                          <Badge 
+                            variant="secondary" 
+                            className="w-fit bg-green-500/10 text-green-600 hover:bg-green-500/20"
+                          >
+                            ✅ Connected
+                          </Badge>
+                        </CardHeader>
+                      </Card>
+                    );
+                  })}
+                </div>
+              ) : (
+                <Card className="border-dashed">
+                  <CardContent className="flex items-center justify-center py-8">
+                    <p className="text-muted-foreground text-sm">
+                      No accounts connected. Click "Connect" to add your {platformName} account.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          );
+        })}
       </div>
     </DashboardLayout>
   );
