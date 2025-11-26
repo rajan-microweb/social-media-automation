@@ -94,8 +94,10 @@ export default function CreateStory() {
   }, [typeOfStory]);
 
   const handlePlatformChange = (platform: string, checked: boolean) => {
-    // Check if platform is connected before allowing selection
-    if (checked && !connectedPlatforms.includes(platform)) {
+    // Check if platform is connected before allowing selection (case-insensitive)
+    const isConnected = connectedPlatforms.some(p => p.toLowerCase() === platform.toLowerCase());
+    
+    if (checked && !isConnected) {
       setAlertMessage(`Please connect your ${platform} account first to select this platform.`);
       setAlertPlatform(platform);
       setShowConnectionAlert(true);
