@@ -14,6 +14,15 @@ import { toast } from "sonner";
 import { Loader2, Sparkles } from "lucide-react";
 import { z } from "zod";
 import { AiPromptModal } from "@/components/AiPromptModal";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const PLATFORM_MAP: Record<string, string[]> = {
   image: ["Facebook", "Instagram"],
@@ -53,6 +62,31 @@ export default function EditStory() {
   // AI-generated URLs
   const [imageUrl, setImageUrl] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
+  
+  // Platform connection state
+  const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
+  const [showConnectionAlert, setShowConnectionAlert] = useState(false);
+  const [alertMessage, setAlertMessage] = useState("");
+  const [alertPlatform, setAlertPlatform] = useState("");
+
+  // Fetch connected platforms on mount
+  useEffect(() => {
+    const fetchConnectedPlatforms = async () => {
+      if (!user) return;
+      
+      const { data } = await supabase
+        .from("platform_integrations")
+        .select("platform_name")
+        .eq("user_id", user.id);
+      
+      if (data) {
+        const platforms = data.map(p => p.platform_name);
+        setConnectedPlatforms(platforms);
+      }
+    };
+    
+    fetchConnectedPlatforms();
+  }, [user]);
 
   useEffect(() => {
     if (id && user) {
@@ -96,6 +130,14 @@ export default function EditStory() {
   }, [typeOfStory]);
 
   const handlePlatformChange = (platform: string, checked: boolean) => {
+    // Check if platform is connected before allowing selection
+    if (checked && !connectedPlatforms.includes(platform)) {
+      setAlertMessage(`Please connect your ${platform} account first to select this platform.`);
+      setAlertPlatform(platform);
+      setShowConnectionAlert(true);
+      return;
+    }
+    
     setPlatforms(prev =>
       checked ? [...prev, platform] : prev.filter(p => p !== platform)
     );
@@ -442,6 +484,22 @@ export default function EditStory() {
         fieldType={aiModalField}
         onGenerate={handleAiGenerate}
       />
+      
+      <AlertDialog open={showConnectionAlert} onOpenChange={setShowConnectionAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Account Connection Required</AlertDialogTitle>
+            <AlertDialogDescription>
+              {alertMessage}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => navigate("/accounts")}>
+              Go to Accounts
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardLayout>
   );
 }
