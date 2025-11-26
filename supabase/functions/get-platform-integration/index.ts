@@ -16,9 +16,7 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const url = new URL(req.url);
-    const platform_name = url.searchParams.get('platform_name');
-    const user_id = url.searchParams.get('user_id');
+    const { platform_name, user_id } = await req.json();
 
     console.info('Fetching platform integrations:', { platform_name, user_id });
 
