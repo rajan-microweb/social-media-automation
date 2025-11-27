@@ -51,13 +51,20 @@ export default function Stories() {
   };
 
   const handleDelete = async (id: string) => {
-    const { error } = await supabase.from("stories").delete().eq("id", id);
+    try {
+      const { error } = await supabase.functions.invoke('delete-story', {
+        body: { story_id: id, user_id: user!.id }
+      });
 
-    if (error) {
+      if (error) {
+        toast.error("Failed to delete story");
+      } else {
+        toast.success("Story deleted");
+        fetchStories();
+      }
+    } catch (error) {
       toast.error("Failed to delete story");
-    } else {
-      toast.success("Story deleted");
-      fetchStories();
+      console.error('Error deleting story:', error);
     }
   };
 

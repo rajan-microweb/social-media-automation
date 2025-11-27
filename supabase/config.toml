@@ -20,3 +20,9 @@ verify_jwt = false
 
 [functions.update-platform-integration]
 verify_jwt = false
+
+[functions.update-story]
+verify_jwt = false
+
+[functions.delete-story]
+verify_jwt = false
