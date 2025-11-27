@@ -111,7 +111,16 @@ export default function EditStory() {
         setText(data.text || "");
         if (data.image) setExistingMediaUrl(data.image);
         if (data.video) setExistingMediaUrl(data.video);
-        setScheduledAt(data.scheduled_at ? new Date(data.scheduled_at).toISOString().slice(0, 16) : "");
+        
+        // Convert UTC datetime to local timezone for datetime-local input
+        if (data.scheduled_at) {
+          const date = new Date(data.scheduled_at);
+          const offset = date.getTimezoneOffset();
+          const localDate = new Date(date.getTime() - offset * 60 * 1000);
+          setScheduledAt(localDate.toISOString().slice(0, 16));
+        } else {
+          setScheduledAt("");
+        }
       }
     } catch (error: any) {
       console.error("Error fetching story:", error);

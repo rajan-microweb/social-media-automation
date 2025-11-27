@@ -166,7 +166,16 @@ export default function EditPost() {
       setArticleDescription(data.description || "");
       setArticleUrl(data.url || "");
       setStatus(data.status);
-      setScheduledAt(data.scheduled_at ? new Date(data.scheduled_at).toISOString().slice(0, 16) : "");
+      
+      // Convert UTC datetime to local timezone for datetime-local input
+      if (data.scheduled_at) {
+        const date = new Date(data.scheduled_at);
+        const offset = date.getTimezoneOffset();
+        const localDate = new Date(date.getTime() - offset * 60 * 1000);
+        setScheduledAt(localDate.toISOString().slice(0, 16));
+      } else {
+        setScheduledAt("");
+      }
 
       // Set existing media URL
       if (data.type_of_post === "article" && data.image) {
