@@ -470,6 +470,7 @@ export default function EditPost() {
 
   // Field visibility logic
   const showTextContent = typeOfPost && typeOfPost !== "pdf";
+  const showPdfTextContent = typeOfPost === "pdf";
   const showArticleFields = typeOfPost === "article";
   const showMediaUpload = typeOfPost && typeOfPost !== "onlyText" && typeOfPost !== "article";
   const showYoutubeFields = platforms.includes("youtube") && typeOfPost === "video";
@@ -863,6 +864,36 @@ export default function EditPost() {
                       (In Facebook and Instagram, Video will be posted as Reel)
                     </p>
                   )}
+                </div>
+              )}
+
+              {/* PDF Text Content - Show only for PDF type */}
+              {showPdfTextContent && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="pdfTextContent">Text Content (Optional)</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openAiModal("text", "textContent")}
+                      className="h-8 gap-1"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      AI Generate
+                    </Button>
+                  </div>
+                  <Textarea
+                    id="pdfTextContent"
+                    value={textContent}
+                    onChange={(e) => setTextContent(e.target.value)}
+                    rows={4}
+                    maxLength={2000}
+                    placeholder="Write accompanying text for your PDF post..."
+                  />
+                  <div className="text-xs text-muted-foreground text-right">
+                    {textContent.length}/2000
+                  </div>
                 </div>
               )}
 
