@@ -309,21 +309,57 @@ export default function EditStory() {
               {availablePlatforms.length > 0 && (
                 <div className="space-y-2">
                   <Label>Platforms *</Label>
-                  <div className="flex flex-wrap gap-4">
-                    {availablePlatforms.map((platform) => (
-                      <div key={platform} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={platform}
-                          checked={platforms.includes(platform)}
-                          onCheckedChange={(checked) =>
-                            handlePlatformChange(platform, checked as boolean)
-                          }
-                        />
-                        <Label htmlFor={platform} className="cursor-pointer">
-                          {platform}
-                        </Label>
-                      </div>
-                    ))}
+                  <div className="flex flex-wrap gap-3">
+                    {availablePlatforms.map((platform) => {
+                      const isSelected = platforms.includes(platform);
+                      const platformLower = platform.toLowerCase();
+                      
+                      const getPlatformIcon = () => {
+                        switch (platformLower) {
+                          case 'facebook':
+                            return (
+                              <svg viewBox="0 0 24 24" className="w-8 h-8" fill="#1877F2">
+                                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                              </svg>
+                            );
+                          case 'instagram':
+                            return (
+                              <svg viewBox="0 0 24 24" className="w-8 h-8">
+                                <defs>
+                                  <linearGradient id="ig-gradient-edit-story" x1="0%" y1="100%" x2="100%" y2="0%">
+                                    <stop offset="0%" stopColor="#FFDC80"/>
+                                    <stop offset="10%" stopColor="#FCAF45"/>
+                                    <stop offset="30%" stopColor="#F77737"/>
+                                    <stop offset="60%" stopColor="#C13584"/>
+                                    <stop offset="100%" stopColor="#833AB4"/>
+                                  </linearGradient>
+                                </defs>
+                                <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ig-gradient-edit-story)"/>
+                                <circle cx="12" cy="12" r="4" fill="none" stroke="white" strokeWidth="1.5"/>
+                                <circle cx="17.5" cy="6.5" r="1.5" fill="white"/>
+                              </svg>
+                            );
+                          default:
+                            return null;
+                        }
+                      };
+
+                      return (
+                        <button
+                          key={platform}
+                          type="button"
+                          onClick={() => handlePlatformChange(platform, !isSelected)}
+                          className={`flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all min-w-[100px] ${
+                            isSelected
+                              ? 'border-primary bg-primary/5 shadow-sm'
+                              : 'border-border hover:border-muted-foreground/50 bg-card'
+                          }`}
+                        >
+                          {getPlatformIcon()}
+                          <span className="mt-2 text-sm font-medium text-foreground">{platform}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
