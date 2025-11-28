@@ -2,7 +2,8 @@ import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Facebook, Instagram, Linkedin, Twitter } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Facebook, Instagram, Linkedin, Twitter, ShieldAlert, X, Monitor } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,10 +26,25 @@ interface PlatformConfig {
   color: string;
 }
 
+interface LoginActivitySession {
+  userId: string;
+  maskedEmail: string;
+  connectedAt: string;
+  lastUpdated: string;
+  matchedAccounts: {
+    accountName: string;
+    accountType: string;
+    linkedinId: string;
+  }[];
+}
+
 export default function Accounts() {
   const { user } = useAuth();
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loginActivity, setLoginActivity] = useState<LoginActivitySession[]>([]);
+  const [loadingActivity, setLoadingActivity] = useState(false);
+  const [revokingSession, setRevokingSession] = useState<string | null>(null);
 
   const platformConfigs: Record<string, PlatformConfig> = {
     linkedin: {
@@ -36,21 +52,76 @@ export default function Accounts() {
       icon: Linkedin,
       color: "text-[#0A66C2]",
     },
-    // facebook: {
-    //   name: "Facebook",
-    //   icon: Facebook,
-    //   color: "text-[#1877F2]",
-    // },
-    // instagram: {
-    //   name: "Instagram",
-    //   icon: Instagram,
-    //   color: "text-[#E4405F]",
-    // },
-    // twitter: {
-    //   name: "Twitter",
-    //   icon: Twitter,
-    //   color: "text-[#1DA1F2]",
-    // },
+  };
+
+  // Get all LinkedIn IDs from connected accounts
+  const getLinkedInIds = (accounts: ConnectedAccount[]): string[] => {
+    return accounts
+      .filter((acc) => acc.platform === "LinkedIn")
+      .map((acc) => acc.accountId);
+  };
+
+  // Fetch login activity
+  const fetchLoginActivity = async (linkedinIds: string[]) => {
+    if (!user?.id || linkedinIds.length === 0) {
+      setLoginActivity([]);
+      return;
+    }
+
+    setLoadingActivity(true);
+    try {
+      const response = await supabase.functions.invoke("get-login-activity", {
+        body: {
+          user_id: user.id,
+          linkedin_ids: linkedinIds,
+        },
+      });
+
+      if (response.error) {
+        console.error("Error fetching login activity:", response.error);
+        return;
+      }
+
+      setLoginActivity(response.data?.loginActivity || []);
+    } catch (error) {
+      console.error("Error fetching login activity:", error);
+    } finally {
+      setLoadingActivity(false);
+    }
+  };
+
+  // Revoke access for another session
+  const handleRevokeAccess = async (session: LoginActivitySession) => {
+    if (!user?.id) return;
+
+    setRevokingSession(session.userId);
+    try {
+      const linkedinIds = session.matchedAccounts.map((acc) => acc.linkedinId);
+
+      const response = await supabase.functions.invoke("revoke-other-session", {
+        body: {
+          requesting_user_id: user.id,
+          target_user_id: session.userId,
+          linkedin_ids: linkedinIds,
+        },
+      });
+
+      if (response.error) {
+        toast.error("Failed to revoke access");
+        console.error("Error revoking access:", response.error);
+        return;
+      }
+
+      toast.success("Access revoked successfully");
+      // Refresh login activity
+      const linkedInIds = getLinkedInIds(connectedAccounts);
+      await fetchLoginActivity(linkedInIds);
+    } catch (error) {
+      console.error("Error revoking access:", error);
+      toast.error("Failed to revoke access");
+    } finally {
+      setRevokingSession(null);
+    }
   };
 
   useEffect(() => {
@@ -117,10 +188,15 @@ export default function Accounts() {
               });
             }
           }
-          // Add similar parsing for other platforms if needed in the future
         });
 
         setConnectedAccounts(accounts);
+
+        // Fetch login activity after getting connected accounts
+        const linkedInIds = accounts
+          .filter((acc) => acc.platform === "LinkedIn")
+          .map((acc) => acc.accountId);
+        await fetchLoginActivity(linkedInIds);
       }
       setLoading(false);
     };
@@ -243,6 +319,66 @@ export default function Accounts() {
           <h1 className="text-3xl font-bold tracking-tight">Social Media Accounts</h1>
           <p className="text-muted-foreground mt-2">Connect and manage your social media accounts</p>
         </div>
+
+        {/* Login Activity Alert */}
+        {loginActivity.length > 0 && (
+          <div className="space-y-4">
+            <Alert variant="destructive" className="border-destructive/50 bg-destructive/10">
+              <ShieldAlert className="h-5 w-5" />
+              <AlertTitle className="text-lg font-semibold">Security Alert</AlertTitle>
+              <AlertDescription className="mt-2">
+                <p className="mb-4">
+                  Your connected account(s) are also logged in on {loginActivity.length} other session
+                  {loginActivity.length > 1 ? "s" : ""}. If you don't recognize this activity, consider changing your
+                  LinkedIn password.
+                </p>
+
+                <div className="space-y-3">
+                  {loginActivity.map((session, index) => (
+                    <Card key={index} className="bg-background/50 border-border">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-full bg-muted">
+                              <Monitor className="h-5 w-5 text-muted-foreground" />
+                            </div>
+                            <div>
+                              <p className="font-medium">{session.maskedEmail}</p>
+                              <p className="text-sm text-muted-foreground">
+                                Connected on {new Date(session.connectedAt).toLocaleDateString("en-US", {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </p>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {session.matchedAccounts.map((acc, i) => (
+                                  <Badge key={i} variant="secondary" className="text-xs">
+                                    {acc.accountName} ({acc.accountType})
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleRevokeAccess(session)}
+                            disabled={revokingSession === session.userId}
+                          >
+                            {revokingSession === session.userId ? "Revoking..." : "Remove Access"}
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </AlertDescription>
+            </Alert>
+          </div>
+        )}
 
         {/* Display accounts grouped by platform */}
         {allPlatforms.map((platformName) => {
