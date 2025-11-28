@@ -3,6 +3,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Facebook, Instagram, Linkedin, Twitter, ShieldAlert, X, Monitor } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -45,6 +55,10 @@ export default function Accounts() {
   const [loginActivity, setLoginActivity] = useState<LoginActivitySession[]>([]);
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [revokingSession, setRevokingSession] = useState<string | null>(null);
+  const [disconnectDialog, setDisconnectDialog] = useState<{ open: boolean; platformName: string | null }>({
+    open: false,
+    platformName: null,
+  });
 
   const platformConfigs: Record<string, PlatformConfig> = {
     linkedin: {
@@ -248,8 +262,13 @@ export default function Accounts() {
     }
   };
 
-  const handleDisconnect = async (platformName: string) => {
-    if (!user?.id) {
+  const openDisconnectDialog = (platformName: string) => {
+    setDisconnectDialog({ open: true, platformName });
+  };
+
+  const handleDisconnect = async () => {
+    const platformName = disconnectDialog.platformName;
+    if (!platformName || !user?.id) {
       toast.error("Please log in to disconnect your account");
       return;
     }
@@ -278,6 +297,8 @@ export default function Accounts() {
     } catch (error) {
       console.error("Error disconnecting platform:", error);
       toast.error("Failed to disconnect platform");
+    } finally {
+      setDisconnectDialog({ open: false, platformName: null });
     }
   };
 
@@ -405,7 +426,7 @@ export default function Accounts() {
                 </div>
                 <div className="flex items-center gap-2">
                   {platformAccounts.length > 0 && (
-                    <Button variant="destructive" onClick={() => handleDisconnect(platformName)}>
+                    <Button variant="destructive" onClick={() => openDisconnectDialog(platformName)}>
                       Disconnect
                     </Button>
                   )}
@@ -469,6 +490,24 @@ export default function Accounts() {
             </div>
           );
         })}
+
+        {/* Disconnect Confirmation Dialog */}
+        <AlertDialog open={disconnectDialog.open} onOpenChange={(open) => setDisconnectDialog({ open, platformName: open ? disconnectDialog.platformName : null })}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Disconnect {disconnectDialog.platformName}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to disconnect your {disconnectDialog.platformName} account? This will remove all connected accounts for this platform.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDisconnect} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                Disconnect
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </DashboardLayout>
   );
