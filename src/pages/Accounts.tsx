@@ -13,7 +13,7 @@ interface ConnectedAccount {
   platform: string;
   accountId: string;
   accountName: string;
-  accountType: 'personal' | 'company';
+  accountType: "personal" | "company";
   avatarUrl: string | null;
   platformIcon: React.ComponentType<{ className?: string }>;
   platformColor: string;
@@ -36,26 +36,28 @@ export default function Accounts() {
       icon: Linkedin,
       color: "text-[#0A66C2]",
     },
-    facebook: {
-      name: "Facebook",
-      icon: Facebook,
-      color: "text-[#1877F2]",
-    },
-    instagram: {
-      name: "Instagram",
-      icon: Instagram,
-      color: "text-[#E4405F]",
-    },
-    twitter: {
-      name: "Twitter",
-      icon: Twitter,
-      color: "text-[#1DA1F2]",
-    },
+    // facebook: {
+    //   name: "Facebook",
+    //   icon: Facebook,
+    //   color: "text-[#1877F2]",
+    // },
+    // instagram: {
+    //   name: "Instagram",
+    //   icon: Instagram,
+    //   color: "text-[#E4405F]",
+    // },
+    // twitter: {
+    //   name: "Twitter",
+    //   icon: Twitter,
+    //   color: "text-[#1DA1F2]",
+    // },
   };
 
   useEffect(() => {
     const fetchConnectedAccounts = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) {
         setLoading(false);
         return;
@@ -79,7 +81,7 @@ export default function Accounts() {
         data.forEach((integration) => {
           const platformName = integration.platform_name.toLowerCase();
           const config = platformConfigs[platformName];
-          
+
           if (!config) return;
 
           const credentials = integration.credentials as any;
@@ -139,7 +141,7 @@ export default function Accounts() {
           // Refetch accounts when changes occur
           fetchConnectedAccounts();
           toast.success("Account connected successfully!");
-        }
+        },
       )
       .subscribe();
 
@@ -156,18 +158,14 @@ export default function Accounts() {
       }
 
       const oauthUrl = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=772ig6g3u4jlcp&redirect_uri=https://n8n.srv1044933.hstgr.cloud/webhook/linkedin-callback&state=${user.id}&scope=openid%20profile%20email%20w_member_social%20w_organization_social%20rw_organization_admin%20r_organization_social`;
-      
+
       const width = 600;
       const height = 700;
       const left = window.screen.width / 2 - width / 2;
       const top = window.screen.height / 2 - height / 2;
-      
-      window.open(
-        oauthUrl,
-        "LinkedIn OAuth",
-        `width=${width},height=${height},left=${left},top=${top}`
-      );
-      
+
+      window.open(oauthUrl, "LinkedIn OAuth", `width=${width},height=${height},left=${left},top=${top}`);
+
       toast.success("Opening LinkedIn authentication...");
     } else {
       toast.success(`Connecting to ${platform}...`);
@@ -181,9 +179,7 @@ export default function Accounts() {
     }
 
     try {
-      const platformKey = Object.keys(platformConfigs).find(
-        key => platformConfigs[key].name === platformName
-      );
+      const platformKey = Object.keys(platformConfigs).find((key) => platformConfigs[key].name === platformName);
 
       if (!platformKey) {
         toast.error("Invalid platform");
@@ -210,16 +206,19 @@ export default function Accounts() {
   };
 
   // Group accounts by platform
-  const accountsByPlatform = connectedAccounts.reduce((acc, account) => {
-    if (!acc[account.platform]) {
-      acc[account.platform] = [];
-    }
-    acc[account.platform].push(account);
-    return acc;
-  }, {} as Record<string, ConnectedAccount[]>);
+  const accountsByPlatform = connectedAccounts.reduce(
+    (acc, account) => {
+      if (!acc[account.platform]) {
+        acc[account.platform] = [];
+      }
+      acc[account.platform].push(account);
+      return acc;
+    },
+    {} as Record<string, ConnectedAccount[]>,
+  );
 
   // Get all platform names
-  const allPlatforms = Object.values(platformConfigs).map(p => p.name);
+  const allPlatforms = Object.values(platformConfigs).map((p) => p.name);
 
   if (loading) {
     return (
@@ -227,9 +226,7 @@ export default function Accounts() {
         <div className="space-y-6">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Social Media Accounts</h1>
-            <p className="text-muted-foreground mt-2">
-              Connect and manage your social media accounts
-            </p>
+            <p className="text-muted-foreground mt-2">Connect and manage your social media accounts</p>
           </div>
           <div className="text-center py-12">
             <p className="text-muted-foreground">Loading accounts...</p>
@@ -244,16 +241,12 @@ export default function Accounts() {
       <div className="space-y-8">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Social Media Accounts</h1>
-          <p className="text-muted-foreground mt-2">
-            Connect and manage your social media accounts
-          </p>
+          <p className="text-muted-foreground mt-2">Connect and manage your social media accounts</p>
         </div>
 
         {/* Display accounts grouped by platform */}
         {allPlatforms.map((platformName) => {
-          const platformKey = Object.keys(platformConfigs).find(
-            key => platformConfigs[key].name === platformName
-          );
+          const platformKey = Object.keys(platformConfigs).find((key) => platformConfigs[key].name === platformName);
           const config = platformKey ? platformConfigs[platformKey] : null;
           const platformAccounts = accountsByPlatform[platformName] || [];
           const Icon = config?.icon || Linkedin;
@@ -263,23 +256,20 @@ export default function Accounts() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-muted/50">
-                    <Icon className={`h-6 w-6 ${config?.color || 'text-foreground'}`} />
+                    <Icon className={`h-6 w-6 ${config?.color || "text-foreground"}`} />
                   </div>
                   <div>
                     <h2 className="text-xl font-semibold">{platformName}</h2>
                     <p className="text-sm text-muted-foreground">
-                      {platformAccounts.length > 0 
-                        ? `${platformAccounts.length} account${platformAccounts.length > 1 ? 's' : ''} connected`
-                        : 'Not connected'}
+                      {platformAccounts.length > 0
+                        ? `${platformAccounts.length} account${platformAccounts.length > 1 ? "s" : ""} connected`
+                        : "Not connected"}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {platformAccounts.length > 0 && (
-                    <Button
-                      variant="destructive"
-                      onClick={() => handleDisconnect(platformName)}
-                    >
+                    <Button variant="destructive" onClick={() => handleDisconnect(platformName)}>
                       Disconnect
                     </Button>
                   )}
@@ -287,7 +277,7 @@ export default function Accounts() {
                     variant={platformAccounts.length > 0 ? "outline" : "default"}
                     onClick={() => handleConnect(platformName)}
                   >
-                    {platformAccounts.length > 0 ? '+ Add Account' : 'Connect'}
+                    {platformAccounts.length > 0 ? "+ Add Account" : "Connect"}
                   </Button>
                 </div>
               </div>
@@ -297,10 +287,7 @@ export default function Accounts() {
                   {platformAccounts.map((account) => {
                     const AccountIcon = account.platformIcon;
                     return (
-                      <Card
-                        key={account.id}
-                        className="hover:shadow-lg transition-all duration-300 border-border/50"
-                      >
+                      <Card key={account.id} className="hover:shadow-lg transition-all duration-300 border-border/50">
                         <CardHeader className="space-y-3">
                           <div className="flex items-start justify-between">
                             <div className="flex items-center gap-3">
@@ -316,20 +303,15 @@ export default function Accounts() {
                                 </div>
                               )}
                               <div className="flex-1 min-w-0">
-                                <h3 className="font-semibold text-sm truncate mb-1">
-                                  {account.accountName}
-                                </h3>
-                                <Badge 
-                                  variant="secondary" 
-                                  className="text-xs"
-                                >
-                                  {account.accountType === 'personal' ? 'Personal' : 'Company'}
+                                <h3 className="font-semibold text-sm truncate mb-1">{account.accountName}</h3>
+                                <Badge variant="secondary" className="text-xs">
+                                  {account.accountType === "personal" ? "Personal" : "Company"}
                                 </Badge>
                               </div>
                             </div>
                           </div>
-                          <Badge 
-                            variant="secondary" 
+                          <Badge
+                            variant="secondary"
                             className="w-fit bg-green-500/10 text-green-600 hover:bg-green-500/20"
                           >
                             ✅ Connected
