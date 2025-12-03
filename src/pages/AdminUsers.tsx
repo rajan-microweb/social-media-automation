@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -54,22 +55,44 @@ export default function AdminUsers() {
     setLoading(false);
   };
 
+  const { user: currentUser } = useAuth();
+
   const toggleAdmin = async (userId: string, currentRoles: string[]) => {
     const isAdmin = currentRoles.includes("ADMIN");
 
+    // Block admin from removing their own admin role
+    if (isAdmin && userId === currentUser?.id) {
+      toast.error("You cannot remove your own admin role");
+      return;
+    }
+
     if (isAdmin) {
-      const { error } = await supabase
+      // Remove admin role
+      const { error: deleteError } = await supabase
         .from("user_roles")
         .delete()
         .eq("user_id", userId)
         .eq("role", "ADMIN");
 
-      if (error) {
+      if (deleteError) {
         toast.error("Failed to remove admin role");
-      } else {
-        toast.success("Admin role removed");
-        fetchUsers();
+        return;
       }
+
+      // Auto-add CLIENT role if user doesn't have it
+      if (!currentRoles.includes("CLIENT")) {
+        const { error: insertError } = await supabase
+          .from("user_roles")
+          .insert({ user_id: userId, role: "CLIENT" });
+
+        if (insertError) {
+          toast.error("Failed to add client role");
+          return;
+        }
+      }
+
+      toast.success("Admin role removed, user is now a client");
+      fetchUsers();
     } else {
       const { error } = await supabase
         .from("user_roles")
@@ -137,6 +160,7 @@ export default function AdminUsers() {
                             user.roles.includes("ADMIN") ? "destructive" : "default"
                           }
                           onClick={() => toggleAdmin(user.id, user.roles)}
+                          disabled={user.roles.includes("ADMIN") && user.id === currentUser?.id}
                         >
                           {user.roles.includes("ADMIN")
                             ? "Remove Admin"
