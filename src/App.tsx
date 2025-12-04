@@ -14,6 +14,7 @@ import EditPost from "./pages/EditPost";
 import Stories from "./pages/Stories";
 import CreateStory from "./pages/CreateStory";
 import EditStory from "./pages/EditStory";
+import Calendar from "./pages/Calendar";
 import AdminUsers from "./pages/AdminUsers";
 import Accounts from "./pages/Accounts";
 import Profile from "./pages/Profile";
@@ -84,6 +85,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <EditStory />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/calendar"
+              element={
+                <ProtectedRoute>
+                  <Calendar />
                 </ProtectedRoute>
               }
             />
