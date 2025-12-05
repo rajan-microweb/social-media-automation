@@ -7,33 +7,59 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    // Authenticate user from JWT
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
+
+    if (authError || !user) {
+      console.error('Auth error:', authError);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const authenticatedUserId = user.id;
+    console.log('Authenticated user:', authenticatedUserId);
+
+    // Create service client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { requesting_user_id, target_user_id, linkedin_ids } = body;
+    const { target_user_id, linkedin_ids } = body;
 
-    if (!requesting_user_id || !target_user_id || !linkedin_ids || linkedin_ids.length === 0) {
+    if (!target_user_id || !linkedin_ids || linkedin_ids.length === 0) {
       return new Response(
-        JSON.stringify({ error: 'requesting_user_id, target_user_id, and linkedin_ids are required' }),
+        JSON.stringify({ error: 'target_user_id and linkedin_ids are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log(`User ${requesting_user_id} requesting to revoke access for user ${target_user_id} for LinkedIn IDs:`, linkedin_ids);
+    console.log(`User ${authenticatedUserId} requesting to revoke access for user ${target_user_id} for LinkedIn IDs:`, linkedin_ids);
 
-    // Verify the requesting user owns these LinkedIn accounts
+    // Verify the authenticated user owns these LinkedIn accounts
     const { data: requestingUserIntegration, error: verifyError } = await supabase
       .from('platform_integrations')
       .select('credentials')
-      .eq('user_id', requesting_user_id)
+      .eq('user_id', authenticatedUserId)
       .eq('platform_name', 'linkedin')
       .eq('status', 'active')
       .single();
@@ -46,7 +72,7 @@ serve(async (req) => {
       );
     }
 
-    // Get requesting user's LinkedIn IDs
+    // Get authenticated user's LinkedIn IDs
     const requestingUserLinkedInIds: string[] = [];
     const credentials = requestingUserIntegration.credentials as any;
     
@@ -61,7 +87,7 @@ serve(async (req) => {
       }
     }
 
-    // Verify all requested LinkedIn IDs belong to the requesting user
+    // Verify all requested LinkedIn IDs belong to the authenticated user
     const allOwned = linkedin_ids.every((id: string) => requestingUserLinkedInIds.includes(id));
     if (!allOwned) {
       return new Response(
