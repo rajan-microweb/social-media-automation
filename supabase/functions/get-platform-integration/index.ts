@@ -11,47 +11,65 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
+    // Authenticate user from JWT
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
+
+    if (authError || !user) {
+      console.error('Auth error:', authError);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const authenticatedUserId = user.id;
+    console.log('Authenticated user:', authenticatedUserId);
+
+    // Create service client for database operations
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Get platform_name from URL query params or POST body
     let platform_name: string | null = null;
-    let user_id: string | null = null;
-
-    // Try to get parameters from URL query string first
     const url = new URL(req.url);
     platform_name = url.searchParams.get('platform_name');
-    user_id = url.searchParams.get('user_id');
 
-    // If not in query params, try to parse JSON body (for POST requests)
-    if (!platform_name && !user_id && req.method === 'POST') {
+    if (!platform_name && req.method === 'POST') {
       try {
         const body = await req.text();
         if (body && body.trim()) {
           const json = JSON.parse(body);
           platform_name = json.platform_name || null;
-          user_id = json.user_id || null;
         }
       } catch (parseError) {
         console.warn('Could not parse request body as JSON:', parseError);
-        // Continue with empty params - will return all active integrations
       }
     }
 
-    console.info('Fetching platform integrations:', { platform_name, user_id });
+    console.info('Fetching platform integrations:', { platform_name, user_id: authenticatedUserId });
 
+    // Build query - ALWAYS filter by authenticated user
     let query = supabase
       .from('platform_integrations')
       .select('*')
+      .eq('user_id', authenticatedUserId)
       .eq('status', 'active');
 
     if (platform_name) {
       query = query.eq('platform_name', platform_name);
-    }
-
-    if (user_id) {
-      query = query.eq('user_id', user_id);
     }
 
     const { data, error } = await query;
@@ -60,10 +78,7 @@ Deno.serve(async (req) => {
       console.error('Database error:', error);
       return new Response(
         JSON.stringify({ error: error.message }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -71,19 +86,13 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({ data }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
     console.error('Unexpected error:', error);
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });

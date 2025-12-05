@@ -8,14 +8,40 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    // Authenticate user from JWT
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
+
+    if (authError || !user) {
+      console.error('Auth error:', authError);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const authenticatedUserId = user.id;
+    console.log('Authenticated user:', authenticatedUserId);
+
+    // Create service client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
@@ -24,7 +50,6 @@ serve(async (req) => {
     // Extract file path from URL if provided
     let filePath = file_path;
     if (!filePath && file_url) {
-      // Extract path from URL like: https://xxx.supabase.co/storage/v1/object/public/post-media/images/filename.jpg
       const urlParts = file_url.split('/post-media/');
       if (urlParts.length > 1) {
         filePath = urlParts[1];
@@ -39,9 +64,22 @@ serve(async (req) => {
       );
     }
 
+    // Verify that the file belongs to the authenticated user
+    // Files should be stored with user_id prefix: {user_id}/{filename}
+    const fileOwnerMatch = filePath.match(/^([^\/]+)\//);
+    if (fileOwnerMatch) {
+      const fileOwnerId = fileOwnerMatch[1];
+      if (fileOwnerId !== authenticatedUserId) {
+        console.error('Unauthorized: User does not own this file');
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     console.log('Deleting file from bucket:', filePath);
 
-    // Delete the file from the post-media bucket
     const { data, error } = await supabase
       .storage
       .from('post-media')
