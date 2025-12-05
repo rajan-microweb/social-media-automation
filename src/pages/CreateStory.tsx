@@ -66,6 +66,10 @@ export default function CreateStory() {
   const [alertMessage, setAlertMessage] = useState("");
   const [alertPlatform, setAlertPlatform] = useState("");
 
+  // OpenAI connection state
+  const [openaiConnected, setOpenaiConnected] = useState(false);
+  const [showOpenAIAlert, setShowOpenAIAlert] = useState(false);
+
   // Fetch connected platforms on mount
   useEffect(() => {
     const fetchConnectedPlatforms = async () => {
@@ -79,6 +83,7 @@ export default function CreateStory() {
       if (data) {
         const platforms = data.map(p => p.platform_name);
         setConnectedPlatforms(platforms);
+        setOpenaiConnected(platforms.some(p => p.toLowerCase() === "openai"));
       }
     };
     
@@ -110,6 +115,10 @@ export default function CreateStory() {
   };
 
   const openAiModal = (field: "text" | "image" | "video", target: string) => {
+    if (!openaiConnected) {
+      setShowOpenAIAlert(true);
+      return;
+    }
     setAiModalField(field);
     setAiModalTarget(target);
     setAiModalOpen(true);
@@ -479,6 +488,22 @@ export default function CreateStory() {
             <AlertDialogTitle>Account Connection Required</AlertDialogTitle>
             <AlertDialogDescription>
               {alertMessage}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => navigate("/accounts")}>
+              Go to Accounts
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showOpenAIAlert} onOpenChange={setShowOpenAIAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>OpenAI Not Connected</AlertDialogTitle>
+            <AlertDialogDescription>
+              Please connect your OpenAI account first to use AI generation features.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

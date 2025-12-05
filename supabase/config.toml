@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.facebook-auth]
 verify_jwt = false
+
+[functions.validate-openai-key]
+verify_jwt = false

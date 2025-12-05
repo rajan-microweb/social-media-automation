@@ -13,11 +13,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Facebook, Instagram, Linkedin, Twitter, ShieldAlert, X, Monitor } from "lucide-react";
+import { Facebook, Instagram, Linkedin, Twitter, ShieldAlert, X, Monitor, Brain } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { OpenAIConnectDialog } from "@/components/OpenAIConnectDialog";
 
 interface ConnectedAccount {
   id: string;
@@ -34,6 +35,7 @@ interface PlatformConfig {
   name: string;
   icon: React.ComponentType<{ className?: string }>;
   color: string;
+  isApiKey?: boolean;
 }
 
 interface LoginActivitySession {
@@ -48,6 +50,11 @@ interface LoginActivitySession {
   }[];
 }
 
+interface OpenAICredentials {
+  api_key: string;
+  masked_key: string;
+}
+
 export default function Accounts() {
   const { user } = useAuth();
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
@@ -59,6 +66,9 @@ export default function Accounts() {
     open: false,
     platformName: null,
   });
+  const [openaiDialogOpen, setOpenaiDialogOpen] = useState(false);
+  const [openaiConnected, setOpenaiConnected] = useState(false);
+  const [openaiMaskedKey, setOpenaiMaskedKey] = useState("");
 
   const platformConfigs: Record<string, PlatformConfig> = {
     linkedin: {
@@ -71,11 +81,12 @@ export default function Accounts() {
       icon: Facebook,
       color: "text-[#1877F2]",
     },
-    // instagram: {
-    //   name: "Instagram",
-    //   icon: Instagram,
-    //   color: "text-[#E4405F]",
-    // },
+    openai: {
+      name: "OpenAI",
+      icon: Brain,
+      color: "text-[#10A37F]",
+      isApiKey: true,
+    },
   };
 
   // Get all LinkedIn IDs from connected accounts
@@ -146,82 +157,89 @@ export default function Accounts() {
     }
   };
 
-  useEffect(() => {
-    const fetchConnectedAccounts = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        setLoading(false);
-        return;
-      }
+  const fetchConnectedAccounts = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-      const { data, error } = await supabase
-        .from("platform_integrations")
-        .select("platform_name, credentials")
-        .eq("user_id", user.id)
-        .eq("status", "active");
+    const { data, error } = await supabase
+      .from("platform_integrations")
+      .select("platform_name, credentials")
+      .eq("user_id", user.id)
+      .eq("status", "active");
 
-      if (error) {
-        console.error("Error fetching integrations:", error);
-        setLoading(false);
-        return;
-      }
+    if (error) {
+      console.error("Error fetching integrations:", error);
+      setLoading(false);
+      return;
+    }
 
-      if (data) {
-        const accounts: ConnectedAccount[] = [];
+    if (data) {
+      const accounts: ConnectedAccount[] = [];
 
-        data.forEach((integration) => {
-          const platformName = integration.platform_name.toLowerCase();
-          const config = platformConfigs[platformName];
+      data.forEach((integration) => {
+        const platformName = integration.platform_name.toLowerCase();
+        const config = platformConfigs[platformName];
 
-          if (!config) return;
+        if (!config) return;
 
-          const credentials = integration.credentials as any;
+        const credentials = integration.credentials as any;
 
-          if ((platformName === "linkedin" || platformName === "facebook") && credentials) {
-            // Add personal account if exists
-            if (credentials.personal_info) {
-              const providerId = credentials.personal_info.linkedin_id || credentials.personal_info.provider_id;
+        // Handle OpenAI separately
+        if (platformName === "openai") {
+          setOpenaiConnected(true);
+          setOpenaiMaskedKey(credentials?.masked_key || "sk-...****");
+          return;
+        }
+
+        if ((platformName === "linkedin" || platformName === "facebook") && credentials) {
+          // Add personal account if exists
+          if (credentials.personal_info) {
+            const providerId = credentials.personal_info.linkedin_id || credentials.personal_info.provider_id;
+            accounts.push({
+              id: `${platformName}-personal-${providerId}`,
+              platform: config.name,
+              accountId: providerId,
+              accountName: credentials.personal_info.name || `${config.name} User`,
+              accountType: "personal",
+              avatarUrl: credentials.personal_info.avatar_url || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+
+          // Add company/page accounts
+          if (credentials.company_info && Array.isArray(credentials.company_info)) {
+            credentials.company_info.forEach((company: any) => {
               accounts.push({
-                id: `${platformName}-personal-${providerId}`,
+                id: `${platformName}-company-${company.company_id}`,
                 platform: config.name,
-                accountId: providerId,
-                accountName: credentials.personal_info.name || `${config.name} User`,
-                accountType: "personal",
-                avatarUrl: credentials.personal_info.avatar_url || null,
+                accountId: company.company_id,
+                accountName: company.company_name || (platformName === "facebook" ? "Page" : "Company"),
+                accountType: "company",
+                avatarUrl: company.company_logo || null,
                 platformIcon: config.icon,
                 platformColor: config.color,
               });
-            }
-
-            // Add company/page accounts
-            if (credentials.company_info && Array.isArray(credentials.company_info)) {
-              credentials.company_info.forEach((company: any) => {
-                accounts.push({
-                  id: `${platformName}-company-${company.company_id}`,
-                  platform: config.name,
-                  accountId: company.company_id,
-                  accountName: company.company_name || (platformName === "facebook" ? "Page" : "Company"),
-                  accountType: "company",
-                  avatarUrl: company.company_logo || null,
-                  platformIcon: config.icon,
-                  platformColor: config.color,
-                });
-              });
-            }
+            });
           }
-        });
+        }
+      });
 
-        setConnectedAccounts(accounts);
+      setConnectedAccounts(accounts);
 
-        // Fetch login activity after getting connected accounts
-        const linkedInIds = accounts.filter((acc) => acc.platform === "LinkedIn").map((acc) => acc.accountId);
-        await fetchLoginActivity(linkedInIds);
-      }
-      setLoading(false);
-    };
+      // Fetch login activity after getting connected accounts
+      const linkedInIds = accounts.filter((acc) => acc.platform === "LinkedIn").map((acc) => acc.accountId);
+      await fetchLoginActivity(linkedInIds);
+    }
+    setLoading(false);
+  };
 
+  useEffect(() => {
     fetchConnectedAccounts();
 
     // Set up realtime subscription
@@ -237,7 +255,6 @@ export default function Accounts() {
         () => {
           // Refetch accounts when changes occur
           fetchConnectedAccounts();
-          toast.success("Account connected successfully!");
         },
       )
       .subscribe();
@@ -250,6 +267,12 @@ export default function Accounts() {
   const handleConnect = (platform: string) => {
     if (!user?.id) {
       toast.error("Please log in to connect your account");
+      return;
+    }
+
+    // Handle OpenAI separately
+    if (platform === "OpenAI") {
+      setOpenaiDialogOpen(true);
       return;
     }
 
@@ -304,6 +327,12 @@ export default function Accounts() {
         return;
       }
 
+      // Reset OpenAI state if disconnecting OpenAI
+      if (platformKey === "openai") {
+        setOpenaiConnected(false);
+        setOpenaiMaskedKey("");
+      }
+
       toast.success(`${platformName} disconnected successfully`);
     } catch (error) {
       console.error("Error disconnecting platform:", error);
@@ -325,8 +354,15 @@ export default function Accounts() {
     {} as Record<string, ConnectedAccount[]>,
   );
 
-  // Get all platform names
-  const allPlatforms = Object.values(platformConfigs).map((p) => p.name);
+  // Get all platform names (excluding API key platforms for the main list)
+  const socialPlatforms = Object.entries(platformConfigs)
+    .filter(([_, config]) => !config.isApiKey)
+    .map(([_, config]) => config.name);
+
+  // Get API key platforms
+  const apiKeyPlatforms = Object.entries(platformConfigs)
+    .filter(([_, config]) => config.isApiKey)
+    .map(([key, config]) => ({ key, ...config }));
 
   if (loading) {
     return (
@@ -413,122 +449,173 @@ export default function Accounts() {
           </div>
         )}
 
-        {/* Display accounts grouped by platform */}
-        {allPlatforms.map((platformName) => {
-          const platformKey = Object.keys(platformConfigs).find((key) => platformConfigs[key].name === platformName);
-          const config = platformKey ? platformConfigs[platformKey] : null;
-          const platformAccounts = accountsByPlatform[platformName] || [];
-          const Icon = config?.icon || Linkedin;
+        {/* API Key Integrations Section */}
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold">AI Integrations</h2>
+          {apiKeyPlatforms.map(({ key, name, icon: Icon, color }) => {
+            const isConnected = key === "openai" && openaiConnected;
 
-          return (
-            <div key={platformName} className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-muted/50">
-                    <Icon className={`h-6 w-6 ${config?.color || "text-foreground"}`} />
+            return (
+              <div key={key} className="space-y-4">
+                <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-muted/50">
+                      <Icon className={`h-6 w-6 ${color}`} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold">{name}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {isConnected ? (
+                          <span className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-green-500" />
+                            Connected ({openaiMaskedKey})
+                          </span>
+                        ) : (
+                          "Not connected"
+                        )}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-xl font-semibold">{platformName}</h2>
-                    <p className="text-sm text-muted-foreground">
-                      {platformAccounts.length > 0
-                        ? `${platformAccounts.length} account${platformAccounts.length > 1 ? "s" : ""} connected`
-                        : "Not connected"}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {platformAccounts.length > 0 && (
-                    <Button variant="destructive" onClick={() => openDisconnectDialog(platformName)}>
-                      Disconnect
+                  <div className="flex items-center gap-2">
+                    {isConnected && (
+                      <Button variant="destructive" onClick={() => openDisconnectDialog(name)}>
+                        Disconnect
+                      </Button>
+                    )}
+                    <Button
+                      variant={isConnected ? "outline" : "default"}
+                      onClick={() => handleConnect(name)}
+                    >
+                      {isConnected ? "Update Key" : "Connect"}
                     </Button>
-                  )}
-                  <Button
-                    variant={platformAccounts.length > 0 ? "outline" : "default"}
-                    onClick={() => handleConnect(platformName)}
-                  >
-                    {platformAccounts.length > 0 ? "+ Add Account" : "Connect"}
-                  </Button>
+                  </div>
                 </div>
               </div>
+            );
+          })}
+        </div>
 
-              {platformAccounts.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {platformAccounts.map((account) => {
-                    const AccountIcon = account.platformIcon;
-                    return (
-                      <Card key={account.id} className="hover:shadow-lg transition-all duration-300 border-border/50">
-                        <CardHeader className="space-y-3">
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-center gap-3">
-                              {account.avatarUrl ? (
-                                <img
-                                  src={account.avatarUrl}
-                                  alt={account.accountName}
-                                  className="h-12 w-12 rounded-full object-cover border-2 border-border"
-                                />
-                              ) : (
-                                <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-                                  <AccountIcon className={`h-6 w-6 ${account.platformColor}`} />
+        {/* Social Media Platforms Section */}
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold">Social Media Platforms</h2>
+          {socialPlatforms.map((platformName) => {
+            const platformKey = Object.keys(platformConfigs).find((key) => platformConfigs[key].name === platformName);
+            const config = platformKey ? platformConfigs[platformKey] : null;
+            const platformAccounts = accountsByPlatform[platformName] || [];
+            const Icon = config?.icon || Linkedin;
+
+            return (
+              <div key={platformName} className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-muted/50">
+                      <Icon className={`h-6 w-6 ${config?.color || "text-foreground"}`} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold">{platformName}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {platformAccounts.length > 0
+                          ? `${platformAccounts.length} account${platformAccounts.length > 1 ? "s" : ""} connected`
+                          : "Not connected"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {platformAccounts.length > 0 && (
+                      <Button variant="destructive" onClick={() => openDisconnectDialog(platformName)}>
+                        Disconnect
+                      </Button>
+                    )}
+                    <Button
+                      variant={platformAccounts.length > 0 ? "outline" : "default"}
+                      onClick={() => handleConnect(platformName)}
+                    >
+                      {platformAccounts.length > 0 ? "+ Add Account" : "Connect"}
+                    </Button>
+                  </div>
+                </div>
+
+                {platformAccounts.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {platformAccounts.map((account) => {
+                      const AccountIcon = account.platformIcon;
+                      return (
+                        <Card key={account.id} className="hover:shadow-lg transition-all duration-300 border-border/50">
+                          <CardHeader className="space-y-3">
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center gap-3">
+                                {account.avatarUrl ? (
+                                  <img
+                                    src={account.avatarUrl}
+                                    alt={account.accountName}
+                                    className="h-12 w-12 rounded-full object-cover border-2 border-border"
+                                  />
+                                ) : (
+                                  <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                                    <AccountIcon className={`h-6 w-6 ${account.platformColor}`} />
+                                  </div>
+                                )}
+                                <div>
+                                  <CardTitle className="text-base">{account.accountName}</CardTitle>
+                                  <Badge
+                                    variant="secondary"
+                                    className={`mt-1 text-xs ${
+                                      account.accountType === "personal"
+                                        ? "bg-blue-500/10 text-blue-600"
+                                        : "bg-purple-500/10 text-purple-600"
+                                    }`}
+                                  >
+                                    {account.accountType === "personal" ? "Personal" : "Company"}
+                                  </Badge>
                                 </div>
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <h3 className="font-semibold text-sm truncate mb-1">{account.accountName}</h3>
-                                <Badge variant="secondary" className="text-xs">
-                                  {account.accountType === "personal" ? "Personal" : "Company"}
-                                </Badge>
                               </div>
                             </div>
-                          </div>
-                          <Badge
-                            variant="secondary"
-                            className="w-fit bg-green-500/10 text-green-600 hover:bg-green-500/20"
-                          >
-                            ✅ Connected
-                          </Badge>
-                        </CardHeader>
-                      </Card>
-                    );
-                  })}
-                </div>
-              ) : (
-                <Card className="border-dashed">
-                  <CardContent className="flex items-center justify-center py-8">
-                    <p className="text-muted-foreground text-sm">
-                      No accounts connected. Click "Connect" to add your {platformName} account.
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          );
-        })}
+                          </CardHeader>
+                          <CardContent>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <span className="h-2 w-2 rounded-full bg-green-500" />
+                              Connected
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
 
-        {/* Disconnect Confirmation Dialog */}
-        <AlertDialog
-          open={disconnectDialog.open}
-          onOpenChange={(open) =>
-            setDisconnectDialog({ open, platformName: open ? disconnectDialog.platformName : null })
-          }
-        >
+        {/* Disconnect Dialog */}
+        <AlertDialog open={disconnectDialog.open} onOpenChange={(open) => setDisconnectDialog({ open, platformName: null })}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Disconnect {disconnectDialog.platformName}?</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to disconnect your {disconnectDialog.platformName} account? This will remove all
-                connected accounts for this platform.
+                Are you sure you want to disconnect your {disconnectDialog.platformName} account? You will need to
+                reconnect to use this platform's features again.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleDisconnect}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
+              <AlertDialogAction onClick={handleDisconnect} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                 Disconnect
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* OpenAI Connect Dialog */}
+        <OpenAIConnectDialog
+          open={openaiDialogOpen}
+          onClose={() => setOpenaiDialogOpen(false)}
+          onSuccess={() => {
+            setOpenaiConnected(true);
+            fetchConnectedAccounts();
+          }}
+          userId={user?.id || ""}
+        />
       </div>
     </DashboardLayout>
   );

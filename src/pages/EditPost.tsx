@@ -113,6 +113,10 @@ export default function EditPost() {
   const [aiModalField, setAiModalField] = useState<"text" | "image" | "video" | "pdf">("text");
   const [aiModalTarget, setAiModalTarget] = useState<string>("");
 
+  // OpenAI connection state
+  const [openaiConnected, setOpenaiConnected] = useState(false);
+  const [showOpenAIAlert, setShowOpenAIAlert] = useState(false);
+
   // AI-generated URLs
   const [imageUrl, setImageUrl] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
@@ -134,6 +138,7 @@ export default function EditPost() {
       if (data) {
         const platforms = data.map(p => p.platform_name);
         setConnectedPlatforms(platforms);
+        setOpenaiConnected(platforms.some(p => p.toLowerCase() === "openai"));
       }
     };
     
@@ -298,6 +303,10 @@ export default function EditPost() {
   };
 
   const openAiModal = (field: "text" | "image" | "video" | "pdf", target: string) => {
+    if (!openaiConnected) {
+      setShowOpenAIAlert(true);
+      return;
+    }
     setAiModalField(field);
     setAiModalTarget(target);
     setAiModalOpen(true);
@@ -1112,6 +1121,22 @@ export default function EditPost() {
             <AlertDialogTitle>Account Connection Required</AlertDialogTitle>
             <AlertDialogDescription>
               {alertMessage}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => navigate("/accounts")}>
+              Go to Accounts
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showOpenAIAlert} onOpenChange={setShowOpenAIAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>OpenAI Not Connected</AlertDialogTitle>
+            <AlertDialogDescription>
+              Please connect your OpenAI account first to use AI generation features.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
