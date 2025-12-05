@@ -33,8 +33,5 @@ verify_jwt = true
 [functions.revoke-other-session]
 verify_jwt = true
 
-[functions.facebook-auth]
-verify_jwt = false
-
 [functions.validate-openai-key]
 verify_jwt = true

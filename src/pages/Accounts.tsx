@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Facebook, Instagram, Linkedin, Twitter, ShieldAlert, X, Monitor, Brain } from "lucide-react";
+import { Instagram, Linkedin, Twitter, ShieldAlert, X, Monitor, Brain } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -75,11 +75,6 @@ export default function Accounts() {
       name: "LinkedIn",
       icon: Linkedin,
       color: "text-[#0A66C2]",
-    },
-    facebook: {
-      name: "Facebook",
-      icon: Facebook,
-      color: "text-[#1877F2]",
     },
     openai: {
       name: "OpenAI",
@@ -196,7 +191,7 @@ export default function Accounts() {
           return;
         }
 
-        if ((platformName === "linkedin" || platformName === "facebook") && credentials) {
+        if (platformName === "linkedin" && credentials) {
           // Add personal account if exists
           if (credentials.personal_info) {
             const providerId = credentials.personal_info.linkedin_id || credentials.personal_info.provider_id;
@@ -219,7 +214,7 @@ export default function Accounts() {
                 id: `${platformName}-company-${company.company_id}`,
                 platform: config.name,
                 accountId: company.company_id,
-                accountName: company.company_name || (platformName === "facebook" ? "Page" : "Company"),
+                accountName: company.company_name || "Company",
                 accountType: "company",
                 avatarUrl: company.company_logo || null,
                 platformIcon: config.icon,
@@ -286,11 +281,6 @@ export default function Accounts() {
 
       window.open(oauthUrl, "LinkedIn OAuth", `width=${width},height=${height},left=${left},top=${top}`);
       toast.success("Opening LinkedIn authentication...");
-    } else if (platform === "Facebook") {
-      const oauthUrl = `https://www.facebook.com/v18.0/dialog/oauth?client_id=700910119362432&redirect_uri=https://n8n.srv1044933.hstgr.cloud/webhook/facebook-callback&scope=pages_manage_posts,pages_read_engagement,pages_show_list&response_type=code&state=${user.id}`;
-
-      window.open(oauthUrl, "Facebook OAuth", `width=${width},height=${height},left=${left},top=${top}`);
-      toast.success("Opening Facebook authentication...");
     } else {
       toast.success(`Connecting to ${platform}...`);
     }
