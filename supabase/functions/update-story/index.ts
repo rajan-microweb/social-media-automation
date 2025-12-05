@@ -8,14 +8,40 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    // Authenticate user from JWT
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
+
+    if (authError || !user) {
+      console.error('Auth error:', authError);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const authenticatedUserId = user.id;
+    console.log('Authenticated user:', authenticatedUserId);
+
+    // Create service client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
@@ -29,9 +55,34 @@ serve(async (req) => {
       );
     }
 
+    // Verify ownership - ALWAYS verify against authenticated user
+    const { data: story, error: fetchError } = await supabase
+      .from('stories')
+      .select('user_id')
+      .eq('id', story_id)
+      .single();
+
+    if (fetchError || !story) {
+      console.error('Story not found:', fetchError);
+      return new Response(
+        JSON.stringify({ error: 'Story not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (story.user_id !== authenticatedUserId) {
+      console.error('Unauthorized: User does not own this story');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     console.log('Updating story:', story_id, 'with data:', updateData);
 
-    // Update the story
+    // Remove user_id from updateData to prevent tampering
+    delete updateData.user_id;
+
     const { data, error } = await supabase
       .from('stories')
       .update(updateData)

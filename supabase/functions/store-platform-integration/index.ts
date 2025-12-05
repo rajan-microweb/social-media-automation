@@ -8,34 +8,60 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    // Authenticate user from JWT
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
+
+    if (authError || !user) {
+      console.error('Auth error:', authError);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const authenticatedUserId = user.id;
+    console.log('Authenticated user:', authenticatedUserId);
+
+    // Create service client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { platform_name, user_id, credentials } = body;
+    const { platform_name, credentials } = body;
 
-    console.log('Storing platform integration:', { platform_name, user_id });
+    console.log('Storing platform integration:', { platform_name, user_id: authenticatedUserId });
 
-    if (!platform_name || !user_id || !credentials) {
+    if (!platform_name || !credentials) {
       console.error('Missing required fields');
       return new Response(
-        JSON.stringify({ error: 'platform_name, user_id, and credentials are required' }),
+        JSON.stringify({ error: 'platform_name and credentials are required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Upsert the platform integration (insert or update if exists)
+    // Upsert the platform integration - ALWAYS use authenticated user ID
     const { data, error } = await supabase
       .from('platform_integrations')
       .upsert({
-        user_id,
+        user_id: authenticatedUserId,
         platform_name,
         credentials,
         status: 'active',

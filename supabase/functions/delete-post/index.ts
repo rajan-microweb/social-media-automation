@@ -8,18 +8,44 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    // Authenticate user from JWT
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
+
+    if (authError || !user) {
+      console.error('Auth error:', authError);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const authenticatedUserId = user.id;
+    console.log('Authenticated user:', authenticatedUserId);
+
+    // Create service client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { post_id, user_id } = body;
+    const { post_id } = body;
 
     if (!post_id) {
       console.error('Missing post_id in request');
@@ -29,31 +55,29 @@ serve(async (req) => {
       );
     }
 
-    console.log('Deleting post:', post_id, 'for user:', user_id);
+    console.log('Deleting post:', post_id, 'for user:', authenticatedUserId);
 
-    // Verify ownership if user_id is provided
-    if (user_id) {
-      const { data: post, error: fetchError } = await supabase
-        .from('posts')
-        .select('user_id')
-        .eq('id', post_id)
-        .single();
+    // Verify ownership - ALWAYS verify against authenticated user
+    const { data: post, error: fetchError } = await supabase
+      .from('posts')
+      .select('user_id')
+      .eq('id', post_id)
+      .single();
 
-      if (fetchError || !post) {
-        console.error('Post not found:', fetchError);
-        return new Response(
-          JSON.stringify({ error: 'Post not found' }),
-          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+    if (fetchError || !post) {
+      console.error('Post not found:', fetchError);
+      return new Response(
+        JSON.stringify({ error: 'Post not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-      if (post.user_id !== user_id) {
-        console.error('Unauthorized: User does not own this post');
-        return new Response(
-          JSON.stringify({ error: 'Unauthorized' }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+    if (post.user_id !== authenticatedUserId) {
+      console.error('Unauthorized: User does not own this post');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Delete the post

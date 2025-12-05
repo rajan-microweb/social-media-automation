@@ -7,38 +7,54 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    // Authenticate user from JWT
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Missing authorization header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey);
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(token);
+
+    if (authError || !user) {
+      console.error('Auth error:', authError);
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const authenticatedUserId = user.id;
+    console.log('Authenticated user:', authenticatedUserId);
+
+    // Create service client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get parameters from request body or URL
-    let user_id: string | null = null;
     let linkedin_ids: string[] = [];
 
     if (req.method === 'POST') {
       const body = await req.json();
-      user_id = body.user_id;
       linkedin_ids = body.linkedin_ids || [];
     } else {
       const url = new URL(req.url);
-      user_id = url.searchParams.get('user_id');
       const idsParam = url.searchParams.get('linkedin_ids');
       if (idsParam) {
         linkedin_ids = idsParam.split(',');
       }
-    }
-
-    if (!user_id) {
-      return new Response(
-        JSON.stringify({ error: 'user_id is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
     }
 
     if (linkedin_ids.length === 0) {
@@ -48,7 +64,7 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Fetching login activity for user ${user_id} with LinkedIn IDs:`, linkedin_ids);
+    console.log(`Fetching login activity for user ${authenticatedUserId} with LinkedIn IDs:`, linkedin_ids);
 
     // Fetch all platform integrations for LinkedIn
     const { data: allIntegrations, error: fetchError } = await supabase
@@ -56,7 +72,7 @@ serve(async (req) => {
       .select('user_id, credentials, created_at, updated_at')
       .eq('platform_name', 'linkedin')
       .eq('status', 'active')
-      .neq('user_id', user_id); // Exclude current user
+      .neq('user_id', authenticatedUserId); // Exclude current user
 
     if (fetchError) {
       console.error('Error fetching integrations:', fetchError);

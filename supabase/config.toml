@@ -1,40 +1,40 @@
 project_id = "fcfdyivyjidzqjtanalq"
 
 [functions.get-posts]
-verify_jwt = false
+verify_jwt = true
 
 [functions.update-post]
-verify_jwt = false
+verify_jwt = true
 
 [functions.delete-post]
-verify_jwt = false
+verify_jwt = true
 
 [functions.delete-media]
-verify_jwt = false
+verify_jwt = true
 
 [functions.store-platform-integration]
-verify_jwt = false
+verify_jwt = true
 
 [functions.get-platform-integration]
-verify_jwt = false
+verify_jwt = true
 
 [functions.update-platform-integration]
-verify_jwt = false
+verify_jwt = true
 
 [functions.update-story]
-verify_jwt = false
+verify_jwt = true
 
 [functions.delete-story]
-verify_jwt = false
+verify_jwt = true
 
 [functions.get-login-activity]
-verify_jwt = false
+verify_jwt = true
 
 [functions.revoke-other-session]
-verify_jwt = false
+verify_jwt = true
 
 [functions.facebook-auth]
 verify_jwt = false
 
 [functions.validate-openai-key]
-verify_jwt = false
+verify_jwt = true
