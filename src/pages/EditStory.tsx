@@ -71,6 +71,7 @@ export default function EditStory() {
 
   // OpenAI connection state
   const [openaiConnected, setOpenaiConnected] = useState(false);
+  const [openaiApiKey, setOpenaiApiKey] = useState("");
   const [showOpenAIAlert, setShowOpenAIAlert] = useState(false);
 
   // Fetch connected platforms on mount
@@ -80,13 +81,17 @@ export default function EditStory() {
       
       const { data } = await supabase
         .from("platform_integrations")
-        .select("platform_name")
+        .select("platform_name, credentials")
         .eq("user_id", user.id);
       
       if (data) {
-        const platforms = data.map(p => p.platform_name);
-        setConnectedPlatforms(platforms);
-        setOpenaiConnected(platforms.some(p => p.toLowerCase() === "openai"));
+        const platformNames = data.map(p => p.platform_name);
+        setConnectedPlatforms(platformNames);
+        const openaiIntegration = data.find(p => p.platform_name.toLowerCase() === "openai");
+        setOpenaiConnected(!!openaiIntegration);
+        if (openaiIntegration?.credentials && typeof openaiIntegration.credentials === 'object') {
+          setOpenaiApiKey((openaiIntegration.credentials as any).api_key || "");
+        }
       }
     };
     
@@ -540,6 +545,12 @@ export default function EditStory() {
         onClose={() => setAiModalOpen(false)}
         fieldType={aiModalField}
         onGenerate={handleAiGenerate}
+        context={{
+          userId: user?.id,
+          apiKey: openaiApiKey,
+          platforms: platforms,
+          typeOfStory: typeOfStory,
+        }}
       />
       
       <AlertDialog open={showConnectionAlert} onOpenChange={setShowConnectionAlert}>

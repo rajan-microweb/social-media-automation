@@ -115,6 +115,7 @@ export default function EditPost() {
 
   // OpenAI connection state
   const [openaiConnected, setOpenaiConnected] = useState(false);
+  const [openaiApiKey, setOpenaiApiKey] = useState("");
   const [showOpenAIAlert, setShowOpenAIAlert] = useState(false);
 
   // AI-generated URLs
@@ -132,13 +133,17 @@ export default function EditPost() {
       
       const { data } = await supabase
         .from("platform_integrations")
-        .select("platform_name")
+        .select("platform_name, credentials")
         .eq("user_id", user.id);
       
       if (data) {
-        const platforms = data.map(p => p.platform_name);
-        setConnectedPlatforms(platforms);
-        setOpenaiConnected(platforms.some(p => p.toLowerCase() === "openai"));
+        const platformNames = data.map(p => p.platform_name);
+        setConnectedPlatforms(platformNames);
+        const openaiIntegration = data.find(p => p.platform_name.toLowerCase() === "openai");
+        setOpenaiConnected(!!openaiIntegration);
+        if (openaiIntegration?.credentials && typeof openaiIntegration.credentials === 'object') {
+          setOpenaiApiKey((openaiIntegration.credentials as any).api_key || "");
+        }
       }
     };
     
@@ -1113,6 +1118,14 @@ export default function EditPost() {
         onClose={() => setAiModalOpen(false)}
         onGenerate={handleAiGenerate}
         fieldType={aiModalField}
+        context={{
+          userId: user?.id,
+          apiKey: openaiApiKey,
+          platforms: platforms,
+          typeOfPost: typeOfPost,
+          title: articleTitle,
+          description: articleDescription,
+        }}
       />
       
       <AlertDialog open={showConnectionAlert} onOpenChange={setShowConnectionAlert}>

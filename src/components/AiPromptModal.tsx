@@ -6,12 +6,23 @@ import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+interface AiContext {
+  userId?: string;
+  apiKey?: string;
+  platforms?: string[];
+  typeOfPost?: string;
+  typeOfStory?: string;
+  title?: string;
+  description?: string;
+}
+
 interface AiPromptModalProps {
   open: boolean;
   onClose: () => void;
   onGenerate: (content: string) => void;
   fieldType: "text" | "image" | "video" | "pdf";
   title?: string;
+  context?: AiContext;
 }
 
 export function AiPromptModal({
@@ -19,7 +30,8 @@ export function AiPromptModal({
   onClose,
   onGenerate,
   fieldType,
-  title = "AI Content Generator"
+  title = "AI Content Generator",
+  context
 }: AiPromptModalProps) {
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,16 +45,27 @@ export function AiPromptModal({
     setLoading(true);
 
     try {
-      let payload: Record<string, string> = {};
+      // Build payload with prompt and context
+      const payload: Record<string, any> = {
+        // Always include context fields
+        userId: context?.userId,
+        apiKey: context?.apiKey,
+        platforms: context?.platforms,
+        typeOfPost: context?.typeOfPost,
+        typeOfStory: context?.typeOfStory,
+        title: context?.title,
+        description: context?.description,
+      };
       
+      // Add the prompt based on field type
       if (fieldType === "text") {
-        payload = { textPrompt: prompt };
+        payload.textPrompt = prompt;
       } else if (fieldType === "image") {
-        payload = { imagePrompt: prompt };
+        payload.imagePrompt = prompt;
       } else if (fieldType === "video") {
-        payload = { videoPrompt: prompt };
+        payload.videoPrompt = prompt;
       } else if (fieldType === "pdf") {
-        payload = { pdfPrompt: prompt };
+        payload.pdfPrompt = prompt;
       }
 
       const response = await fetch(
