@@ -1,11 +1,29 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
+import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Whitelist schema for allowed update fields
+const updatePostSchema = z.object({
+  title: z.string().max(500).optional(),
+  description: z.string().max(5000).optional(),
+  text: z.string().max(10000).optional(),
+  status: z.enum(['draft', 'scheduled', 'published']).optional(),
+  scheduled_at: z.string().datetime().nullable().optional(),
+  type_of_post: z.string().max(100).nullable().optional(),
+  platforms: z.array(z.string().max(50)).nullable().optional(),
+  account_type: z.string().max(200).nullable().optional(),
+  tags: z.array(z.string().max(100)).nullable().optional(),
+  image: z.string().max(2000).nullable().optional(),
+  video: z.string().max(2000).nullable().optional(),
+  pdf: z.string().max(2000).nullable().optional(),
+  url: z.string().max(2000).nullable().optional(),
+}).strict();
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -45,7 +63,7 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { post_id, ...updateData } = body;
+    const { post_id, ...rawUpdateData } = body;
 
     if (!post_id) {
       console.error('Missing post_id in request');
@@ -54,6 +72,28 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Validate post_id is a valid UUID
+    const uuidSchema = z.string().uuid();
+    const postIdResult = uuidSchema.safeParse(post_id);
+    if (!postIdResult.success) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid post_id format' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate and whitelist update data
+    const validationResult = updatePostSchema.safeParse(rawUpdateData);
+    if (!validationResult.success) {
+      console.error('Validation error:', validationResult.error.errors);
+      return new Response(
+        JSON.stringify({ error: 'Invalid update data', details: validationResult.error.errors }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const updateData = validationResult.data;
 
     // Verify ownership - ALWAYS verify against authenticated user
     const { data: post, error: fetchError } = await supabase
@@ -78,10 +118,7 @@ serve(async (req) => {
       );
     }
 
-    console.log('Updating post:', post_id, 'with data:', updateData);
-
-    // Remove user_id from updateData to prevent tampering
-    delete updateData.user_id;
+    console.log('Updating post:', post_id, 'with validated data:', updateData);
 
     const { data, error } = await supabase
       .from('posts')

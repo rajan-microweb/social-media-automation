@@ -1,11 +1,21 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
+import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Whitelist schema for platform integration data
+const platformIntegrationSchema = z.object({
+  platform_name: z.enum(['linkedin', 'instagram', 'youtube', 'twitter', 'openai']),
+  credentials: z.record(z.unknown()).refine(
+    (val) => JSON.stringify(val).length <= 50000,
+    { message: 'Credentials object too large' }
+  ),
+});
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -45,17 +55,20 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { platform_name, credentials } = body;
 
-    console.log('Storing platform integration:', { platform_name, user_id: authenticatedUserId });
-
-    if (!platform_name || !credentials) {
-      console.error('Missing required fields');
+    // Validate input data
+    const validationResult = platformIntegrationSchema.safeParse(body);
+    if (!validationResult.success) {
+      console.error('Validation error:', validationResult.error.errors);
       return new Response(
-        JSON.stringify({ error: 'platform_name and credentials are required' }),
+        JSON.stringify({ error: 'Invalid input data', details: validationResult.error.errors }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    const { platform_name, credentials } = validationResult.data;
+
+    console.log('Storing platform integration:', { platform_name, user_id: authenticatedUserId });
 
     // Upsert the platform integration - ALWAYS use authenticated user ID
     const { data, error } = await supabase

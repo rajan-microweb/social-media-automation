@@ -1,9 +1,22 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Whitelist schema for platform integration updates
+const updatePlatformIntegrationSchema = z.object({
+  platform_name: z.enum(['linkedin', 'instagram', 'youtube', 'twitter', 'openai']),
+  updates: z.object({
+    credentials: z.record(z.unknown()).refine(
+      (val) => JSON.stringify(val).length <= 50000,
+      { message: 'Credentials object too large' }
+    ).optional(),
+    status: z.enum(['active', 'inactive', 'expired']).optional(),
+  }).strict(),
+});
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -43,28 +56,22 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
-    const { platform_name, updates } = body;
+
+    // Validate input data
+    const validationResult = updatePlatformIntegrationSchema.safeParse(body);
+    if (!validationResult.success) {
+      console.error('Validation error:', validationResult.error.errors);
+      return new Response(
+        JSON.stringify({ error: 'Invalid input data', details: validationResult.error.errors }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { platform_name, updates } = validationResult.data;
 
     console.info('Updating platform integration:', { platform_name, user_id: authenticatedUserId, updates });
 
-    if (!platform_name) {
-      return new Response(
-        JSON.stringify({ error: 'platform_name is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!updates || typeof updates !== 'object') {
-      return new Response(
-        JSON.stringify({ error: 'updates object is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Remove user_id from updates to prevent tampering
-    delete updates.user_id;
-
-    // Add updated_at timestamp
+    // Add updated_at timestamp to validated updates
     const updateData = {
       ...updates,
       updated_at: new Date().toISOString()
