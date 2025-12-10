@@ -35,3 +35,15 @@ verify_jwt = true
 
 [functions.validate-openai-key]
 verify_jwt = true
+
+[functions.bulk-update-posts]
+verify_jwt = true
+
+[functions.bulk-delete-posts]
+verify_jwt = true
+
+[functions.bulk-update-stories]
+verify_jwt = true
+
+[functions.bulk-delete-stories]
+verify_jwt = true
