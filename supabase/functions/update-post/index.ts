@@ -11,8 +11,8 @@ const corsHeaders = {
 // Whitelist schema for allowed update fields
 const updatePostSchema = z.object({
   title: z.string().max(500).optional(),
-  description: z.string().max(5000).optional(),
-  text: z.string().max(10000).optional(),
+  description: z.string().max(5000).nullable().optional(),
+  text: z.string().max(10000).nullable().optional(),
   status: z.enum(['draft', 'scheduled', 'published']).optional(),
   scheduled_at: z.string().datetime().nullable().optional(),
   type_of_post: z.string().max(100).nullable().optional(),
