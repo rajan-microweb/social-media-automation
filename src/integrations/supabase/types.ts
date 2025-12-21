@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           created_at: string
           credentials: Json
+          credentials_encrypted: boolean | null
           id: string
           platform_name: string
           status: string
@@ -27,6 +28,7 @@ export type Database = {
         Insert: {
           created_at?: string
           credentials: Json
+          credentials_encrypted?: boolean | null
           id?: string
           platform_name: string
           status?: string
@@ -36,6 +38,7 @@ export type Database = {
         Update: {
           created_at?: string
           credentials?: Json
+          credentials_encrypted?: boolean | null
           id?: string
           platform_name?: string
           status?: string
@@ -218,6 +221,8 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      decrypt_credentials: { Args: { encrypted_creds: string }; Returns: Json }
+      encrypt_credentials: { Args: { credentials: Json }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

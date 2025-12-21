@@ -72,10 +72,15 @@ Deno.serve(async (req) => {
     console.info('Updating platform integration:', { platform_name, user_id: authenticatedUserId, updates });
 
     // Add updated_at timestamp to validated updates
-    const updateData = {
+    // If credentials are being updated, mark as unencrypted so trigger re-encrypts
+    const updateData: Record<string, unknown> = {
       ...updates,
       updated_at: new Date().toISOString()
     };
+    
+    if (updates.credentials) {
+      updateData.credentials_encrypted = false; // Trigger will encrypt and set to true
+    }
 
     // Update only for authenticated user
     const { data, error } = await supabase

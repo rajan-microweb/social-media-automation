@@ -84,8 +84,34 @@ Deno.serve(async (req) => {
 
     console.info(`Found ${data?.length || 0} platform integrations`);
 
+    // Decrypt credentials server-side for encrypted records
+    const decryptedData = await Promise.all((data || []).map(async (integration) => {
+      if (integration.credentials_encrypted && integration.credentials) {
+        try {
+          // Call the decrypt function via RPC
+          const encryptedValue = typeof integration.credentials === 'string' 
+            ? integration.credentials 
+            : integration.credentials;
+          
+          const { data: decrypted, error: decryptError } = await supabase
+            .rpc('decrypt_credentials', { encrypted_creds: encryptedValue });
+          
+          if (decryptError) {
+            console.error('Decryption error for integration:', integration.id, decryptError);
+            return { ...integration, credentials: {} }; // Return empty on error
+          }
+          
+          return { ...integration, credentials: decrypted };
+        } catch (e) {
+          console.error('Decryption exception for integration:', integration.id, e);
+          return { ...integration, credentials: {} };
+        }
+      }
+      return integration;
+    }));
+
     return new Response(
-      JSON.stringify({ data }),
+      JSON.stringify({ data: decryptedData }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {

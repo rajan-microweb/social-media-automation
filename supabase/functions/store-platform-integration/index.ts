@@ -71,12 +71,14 @@ serve(async (req) => {
     console.log('Storing platform integration:', { platform_name, user_id: authenticatedUserId });
 
     // Upsert the platform integration - ALWAYS use authenticated user ID
+    // Note: credentials will be automatically encrypted by database trigger
     const { data, error } = await supabase
       .from('platform_integrations')
       .upsert({
         user_id: authenticatedUserId,
         platform_name,
         credentials,
+        credentials_encrypted: false, // Trigger will set to true after encryption
         status: 'active',
         updated_at: new Date().toISOString()
       }, {
