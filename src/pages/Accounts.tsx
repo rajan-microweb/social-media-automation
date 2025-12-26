@@ -322,9 +322,36 @@ export default function Accounts() {
     toast.success(`Connecting to ${platform}...`);
   };
   // Handle submit from PlatformConnectDialog
-  const handlePlatformDialogSubmit = (fields: Record<string, string>) => {
-    // TODO: Implement actual connect logic here (API call, etc.)
-    toast.success(`${platformDialog.platform} credentials submitted!`);
+  const handlePlatformDialogSubmit = async (fields: Record<string, string>) => {
+    if (!user?.id || !platformDialog.platform) {
+      toast.error("User not logged in or platform not specified");
+      return;
+    }
+
+    // Map display name to key used in DB (lowercase)
+    const platformKey = Object.keys(platformConfigs).find(
+      (key) => platformConfigs[key].name.toLowerCase() === platformDialog.platform?.toLowerCase()
+    ) || platformDialog.platform.toLowerCase();
+
+    // Upsert credentials for this user/platform
+    const { error } = await supabase
+      .from("platform_integrations")
+      .upsert([
+        {
+          user_id: user.id,
+          platform_name: platformKey,
+          credentials: fields,
+          status: "active",
+        },
+      ], { onConflict: ["user_id", "platform_name"] });
+
+    if (error) {
+      toast.error(`Failed to save credentials: ${error.message}`);
+    } else {
+      toast.success(`${platformDialog.platform} credentials saved!`);
+      // Optionally refresh accounts
+      fetchConnectedAccounts();
+    }
     setPlatformDialog({ open: false, platform: null });
   };
 
