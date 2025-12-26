@@ -196,6 +196,7 @@ export default function Accounts() {
     if (data) {
       const accounts: ConnectedAccount[] = [];
 
+      // Handle OpenAI separately
       data.forEach((integration) => {
         const platformName = integration.platform_name.toLowerCase();
         const config = platformConfigs[platformName];
@@ -242,6 +243,23 @@ export default function Accounts() {
               });
             });
           }
+        }
+      });
+
+      // Add mock accounts for demo/testing
+      ["facebook", "instagram", "twitter", "youtube"].forEach((platformName) => {
+        const config = platformConfigs[platformName];
+        if (config) {
+          accounts.push({
+            id: `${platformName}-personal-demo`,
+            platform: config.name,
+            accountId: `${platformName}-demo-id`,
+            accountName: `${config.name} Demo User`,
+            accountType: "personal",
+            avatarUrl: null,
+            platformIcon: config.icon,
+            platformColor: config.color,
+          });
         }
       });
 
