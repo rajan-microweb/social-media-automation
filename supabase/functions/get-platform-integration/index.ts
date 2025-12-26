@@ -64,7 +64,6 @@ Deno.serve(async (req) => {
     // Get parameters from URL query params or POST body
     const url = new URL(req.url);
     let platform_name: string | null = url.searchParams.get('platform_name');
-    let user_id: string | null = url.searchParams.get('user_id');
 
     if (req.method === 'POST') {
       try {
@@ -72,37 +71,18 @@ Deno.serve(async (req) => {
         if (body && body.trim()) {
           const json = JSON.parse(body);
           platform_name = json.platform_name || platform_name;
-          user_id = json.user_id || user_id;
         }
       } catch (parseError) {
         console.warn('Could not parse request body as JSON:', parseError);
       }
     }
 
-    // Validate user_id is required
-    if (!user_id) {
-      return new Response(
-        JSON.stringify({ error: 'user_id is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    console.info('Fetching platform integrations:', { platform_name });
 
-    const uuidSchema = z.string().uuid();
-    const userIdResult = uuidSchema.safeParse(user_id);
-    if (!userIdResult.success) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid user_id format' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.info('Fetching platform integrations:', { platform_name, user_id });
-
-    // Build query - filter by provided user_id
+    // Build query - filter only by platform_name if provided
     let query = supabase
       .from('platform_integrations')
       .select('*')
-      .eq('user_id', user_id)
       .eq('status', 'active');
 
     if (platform_name) {
