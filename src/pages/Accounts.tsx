@@ -13,7 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Instagram, Linkedin, Twitter, ShieldAlert, X, Monitor, Brain } from "lucide-react";
+import { Instagram, Linkedin, Twitter, ShieldAlert, X, Monitor, Brain, Facebook, Youtube } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -75,6 +75,26 @@ export default function Accounts() {
       name: "LinkedIn",
       icon: Linkedin,
       color: "text-[#0A66C2]",
+    },
+    facebook: {
+      name: "Facebook",
+      icon: Facebook,
+      color: "text-[#1877F3]",
+    },
+    instagram: {
+      name: "Instagram",
+      icon: Instagram,
+      color: "text-[#E4405F]",
+    },
+    twitter: {
+      name: "Twitter",
+      icon: Twitter,
+      color: "text-[#1DA1F2]",
+    },
+    youtube: {
+      name: "YouTube",
+      icon: Youtube,
+      color: "text-[#FF0000]",
     },
     openai: {
       name: "OpenAI",
@@ -268,6 +288,12 @@ export default function Accounts() {
     // Handle OpenAI separately
     if (platform === "OpenAI") {
       setOpenaiDialogOpen(true);
+      return;
+    }
+
+    // Do nothing for LinkedIn
+    if (platform === "LinkedIn") {
+      // No action on connect for LinkedIn
       return;
     }
 
