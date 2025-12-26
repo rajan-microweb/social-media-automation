@@ -4,6 +4,7 @@ import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
 // Rate limiting
@@ -30,7 +31,8 @@ function checkRateLimit(clientId: string): boolean {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    // Ensure all CORS headers are present for preflight
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
 
   try {
@@ -89,6 +91,7 @@ Deno.serve(async (req) => {
       query = query.eq('platform_name', platform_name);
     }
 
+    // Await the query to get { data, error }
     const { data, error } = await query;
 
     if (error) {
@@ -105,25 +108,31 @@ Deno.serve(async (req) => {
     const decryptedData = await Promise.all((data || []).map(async (integration) => {
       if (integration.credentials_encrypted && integration.credentials) {
         try {
-          // Call the decrypt function via RPC
-          const encryptedValue = typeof integration.credentials === 'string' 
-            ? integration.credentials 
-            : integration.credentials;
-          
+          // Only decrypt if credentials is a non-empty string
+          const encryptedValue = typeof integration.credentials === 'string' && integration.credentials.trim()
+            ? integration.credentials
+            : null;
+
+          if (!encryptedValue) {
+            return { ...integration, credentials: {} };
+          }
+
           const { data: decrypted, error: decryptError } = await supabase
             .rpc('decrypt_credentials', { encrypted_creds: encryptedValue });
-          
+
           if (decryptError) {
             console.error('Decryption error for integration:', integration.id, decryptError);
             return { ...integration, credentials: {} }; // Return empty on error
           }
-          
-          return { ...integration, credentials: decrypted };
+
+          // decrypted may be an array or object depending on RPC, handle both
+          return { ...integration, credentials: decrypted ?? {} };
         } catch (e) {
           console.error('Decryption exception for integration:', integration.id, e);
           return { ...integration, credentials: {} };
         }
       }
+      // If not encrypted or no credentials, return as is
       return integration;
     }));
 
