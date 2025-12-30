@@ -30,14 +30,32 @@ function checkRateLimit(clientId: string): boolean {
   return true;
 }
 
-// Whitelist schema for platform integration data
+// Flexible schema for platform integration data
+// Accepts the full nested credentials structure from n8n workflow
 const platformIntegrationSchema = z.object({
   user_id: z.string().uuid('Invalid user_id format'),
-  platform_name: z.enum(['linkedin', 'instagram', 'youtube', 'twitter', 'openai']),
-  credentials: z.record(z.unknown()).refine(
+  platform_name: z.string().min(1, 'Platform name is required'),
+  credentials: z.object({
+    access_token: z.string().optional(),
+    refresh_token: z.string().optional(),
+    expires_at: z.string().optional(),
+    scope: z.string().optional(),
+    personal_info: z.object({
+      name: z.string().optional(),
+      linkedin_id: z.string().optional(),
+      avatar_url: z.string().nullable().optional(),
+    }).optional(),
+    company_info: z.array(z.object({
+      company_name: z.string().optional(),
+      company_id: z.string().optional(),
+      company_logo: z.string().nullable().optional(),
+    })).optional(),
+    // Allow additional fields for other platforms
+  }).passthrough().refine(
     (val) => JSON.stringify(val).length <= 50000,
     { message: 'Credentials object too large' }
   ),
+  status: z.enum(['active', 'inactive', 'pending', 'error']).optional().default('active'),
 });
 
 serve(async (req) => {
@@ -74,8 +92,10 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
+    
+    console.log('Received payload:', JSON.stringify(body, null, 2));
 
-    // Validate input data (now includes user_id)
+    // Validate input data
     const validationResult = platformIntegrationSchema.safeParse(body);
     if (!validationResult.success) {
       console.error('Validation error:', validationResult.error.errors);
@@ -85,19 +105,24 @@ serve(async (req) => {
       );
     }
 
-    const { user_id, platform_name, credentials } = validationResult.data;
+    const { user_id, platform_name, credentials, status } = validationResult.data;
 
-    console.log('Storing platform integration:', { platform_name, user_id });
+    console.log('Storing platform integration:', { 
+      platform_name, 
+      user_id,
+      status,
+      credentials_keys: Object.keys(credentials)
+    });
 
-    // Upsert the platform integration
+    // Upsert the platform integration with the full credentials JSON
     const { data, error } = await supabase
       .from('platform_integrations')
       .upsert({
         user_id,
         platform_name,
-        credentials,
-        credentials_encrypted: false,
-        status: 'active',
+        credentials, // Store the full nested credentials object
+        credentials_encrypted: false, // Will be encrypted by database trigger
+        status,
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'user_id,platform_name'
@@ -113,7 +138,13 @@ serve(async (req) => {
       );
     }
 
-    console.log('Platform integration stored successfully:', data);
+    console.log('Platform integration stored successfully:', {
+      id: data.id,
+      user_id: data.user_id,
+      platform_name: data.platform_name,
+      status: data.status,
+      credentials_encrypted: data.credentials_encrypted
+    });
 
     return new Response(
       JSON.stringify({ success: true, data }),
