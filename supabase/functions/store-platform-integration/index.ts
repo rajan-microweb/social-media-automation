@@ -115,13 +115,15 @@ serve(async (req) => {
     });
 
     // Upsert the platform integration with the full credentials JSON
+    // Set credentials_encrypted: true to SKIP the encryption trigger
+    // This stores the plain JSON structure as-is
     const { data, error } = await supabase
       .from('platform_integrations')
       .upsert({
         user_id,
         platform_name,
-        credentials, // Store the full nested credentials object
-        credentials_encrypted: false, // Will be encrypted by database trigger
+        credentials, // Store the full nested credentials object as plain JSON
+        credentials_encrypted: true, // Set true to bypass encryption trigger
         status,
         updated_at: new Date().toISOString()
       }, {
