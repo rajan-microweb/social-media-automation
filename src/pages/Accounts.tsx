@@ -336,14 +336,15 @@ export default function Accounts() {
     // Upsert credentials for this user/platform
     const { error } = await supabase
       .from("platform_integrations")
-      .upsert([
+      .upsert(
         {
           user_id: user.id,
           platform_name: platformKey,
           credentials: fields,
           status: "active",
         },
-      ], { onConflict: ["user_id", "platform_name"] });
+        { onConflict: "user_id,platform_name" }
+      );
 
     if (error) {
       toast.error(`Failed to save credentials: ${error.message}`);
