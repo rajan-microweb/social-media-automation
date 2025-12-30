@@ -333,26 +333,31 @@ export default function Accounts() {
       (key) => platformConfigs[key].name.toLowerCase() === platformDialog.platform?.toLowerCase()
     ) || platformDialog.platform.toLowerCase();
 
-    // Upsert credentials for this user/platform
-    const { error } = await supabase
-      .from("platform_integrations")
-      .upsert(
-        {
-          user_id: user.id,
-          platform_name: platformKey,
-          credentials: fields,
-          status: "active",
+    // POST credentials to external webhook instead of saving to DB
+    try {
+      const response = await fetch("https://n8n.srv1044933.hstgr.cloud/webhook/fetch-credentials", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-        { onConflict: "user_id,platform_name" }
-      );
+        body: JSON.stringify({
+          platform_name: platformKey,
+          user_id: user.id,
+          ...fields,
+        }),
+      });
 
-    if (error) {
-      toast.error(`Failed to save credentials: ${error.message}`);
-    } else {
-      toast.success(`${platformDialog.platform} credentials saved!`);
-      // Optionally refresh accounts
-      fetchConnectedAccounts();
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP ${response.status}`);
+      }
+
+      toast.success(`${platformDialog.platform} credentials submitted successfully!`);
+    } catch (error) {
+      console.error("Error submitting credentials:", error);
+      toast.error(`Failed to submit credentials: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
+    
     setPlatformDialog({ open: false, platform: null });
   };
 
