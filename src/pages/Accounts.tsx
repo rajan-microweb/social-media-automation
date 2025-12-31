@@ -554,6 +554,34 @@ export default function Accounts() {
                     </Button>
                   </div>
                 </div>
+                {/* --- ADD THIS: The card grid for OpenAI accounts --- */}
+                {isConnected && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {platformAccounts.map((account) => (
+                      <Card key={account.id} className="hover:shadow-lg transition-all duration-300 border-border/50">
+                        <CardHeader className="space-y-3">
+                          <div className="flex items-center gap-3">
+                            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                              <Icon className={`h-6 w-6 ${color}`} />
+                            </div>
+                            <div>
+                              <CardTitle className="text-base">{account.accountName}</CardTitle>
+                              <Badge variant="secondary" className="mt-1 text-xs bg-green-500/10 text-green-600">
+                                API Key
+                              </Badge>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <span className="h-2 w-2 rounded-full bg-green-500" />
+                            Connected
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
