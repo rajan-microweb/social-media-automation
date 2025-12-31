@@ -181,7 +181,7 @@ export default function Accounts() {
 
     const { data, error } = await supabase
       .from("platform_integrations")
-      .select("id", "platform_name, credentials")
+      .select("id, platform_name, credentials")
       .eq("user_id", user.id)
       .eq("status", "active");
 
