@@ -29,12 +29,6 @@ interface ConnectedAccount {
   avatarUrl: string | null;
   platformIcon: React.ComponentType<{ className?: string }>;
   platformColor: string;
-  // --- ADD THIS FIELD ---
-  details?: {
-    subtitle?: string;
-    extraInfo?: string;
-    badgeText?: string;
-  };
 }
 
 interface PlatformConfig {
@@ -69,10 +63,7 @@ export default function Accounts() {
   });
 
   // State for generic platform connect dialog (including OpenAI)
-  const [platformDialog, setPlatformDialog] = useState<{ open: boolean; platform: string | null }>({
-    open: false,
-    platform: null,
-  });
+  const [platformDialog, setPlatformDialog] = useState<{ open: boolean; platform: string | null }>({ open: false, platform: null });
 
   const platformConfigs: Record<string, PlatformConfig> = {
     linkedin: {
@@ -212,11 +203,10 @@ export default function Accounts() {
         if (credentials) {
           // Add personal account if exists
           if (credentials.personal_info) {
-            const providerId =
-              credentials.personal_info.linkedin_id ||
-              credentials.personal_info.provider_id ||
-              credentials.personal_info.user_id ||
-              `${platformName}-personal`;
+            const providerId = credentials.personal_info.linkedin_id || 
+                              credentials.personal_info.provider_id ||
+                              credentials.personal_info.user_id ||
+                              `${platformName}-personal`;
             accounts.push({
               id: `${platformName}-personal-${providerId}`,
               platform: config.name,
@@ -251,15 +241,11 @@ export default function Accounts() {
               id: `openai-api-${user.id}`,
               platform: config.name,
               accountId: credentials.masked_key || "sk-...****",
-              accountName: credentials.personal_info?.name || "OPENAI API Key",
+              accountName: credentials.masked_key || "API Key Connected",
               accountType: "personal",
-              avatarUrl: credentials.personal_info?.avatar_url || null,
+              avatarUrl: null,
               platformIcon: config.icon,
               platformColor: config.color,
-              details: {
-                subtitle: mainOrg?.org_title || "Standard API",
-                extraInfo: mainOrg?.role ? `Role: ${mainOrg.role}` : "API Access",
-              },
             });
           }
 
@@ -277,43 +263,6 @@ export default function Accounts() {
                 platformColor: config.color,
               });
             }
-          }
-
-          // --- 2. INSTAGRAM LOGIC ---
-          if (platformName === "instagram" && credentials.ig_username) {
-            accounts.push({
-              id: `ig-${credentials.ig_business_id}`,
-              platform: config.name,
-              accountId: credentials.ig_business_id,
-              accountName: credentials.ig_username,
-              accountType: "personal",
-              avatarUrl: credentials.ig_avatar || null,
-              platformIcon: config.icon,
-              platformColor: config.color,
-              details: {
-                subtitle: `@${credentials.ig_username}`,
-                // Using toLocaleString() adds commas to the follower count (e.g., 1,200)
-                extraInfo: `${Number(credentials.ig_followers || 0).toLocaleString()} followers`,
-              },
-            });
-          }
-
-          // --- 3. FACEBOOK LOGIC ---
-          if (platformName === "facebook" && credentials.page_id) {
-            accounts.push({
-              id: `fb-${credentials.page_id}`,
-              platform: config.name,
-              accountId: credentials.page_id,
-              accountName: credentials.page_name,
-              accountType: "company",
-              avatarUrl: credentials.page_info?.avatar_url || null,
-              platformIcon: config.icon,
-              platformColor: config.color,
-              details: {
-                subtitle: credentials.category || "Facebook Page",
-                extraInfo: "Connected via Page Token",
-              },
-            });
           }
         }
       });
@@ -370,10 +319,9 @@ export default function Accounts() {
     }
 
     // Map display name to key used in DB (lowercase)
-    const platformKey =
-      Object.keys(platformConfigs).find(
-        (key) => platformConfigs[key].name.toLowerCase() === platformDialog.platform?.toLowerCase(),
-      ) || platformDialog.platform.toLowerCase();
+    const platformKey = Object.keys(platformConfigs).find(
+      (key) => platformConfigs[key].name.toLowerCase() === platformDialog.platform?.toLowerCase()
+    ) || platformDialog.platform.toLowerCase();
 
     // POST credentials to external webhook (same flow for all platforms including OpenAI)
     try {
@@ -399,7 +347,7 @@ export default function Accounts() {
       console.error("Error submitting credentials:", error);
       toast.error(`Failed to submit credentials: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
-
+    
     setPlatformDialog({ open: false, platform: null });
   };
 
@@ -575,7 +523,6 @@ export default function Accounts() {
                     <div>
                       <h3 className="text-lg font-semibold">{name}</h3>
                       <p className="text-sm text-muted-foreground">
-                        ConnectedAccount
                         {isConnected ? (
                           <span className="flex items-center gap-2">
                             <span className="h-2 w-2 rounded-full bg-green-500" />
@@ -593,7 +540,10 @@ export default function Accounts() {
                         Disconnect
                       </Button>
                     )}
-                    <Button variant={isConnected ? "outline" : "default"} onClick={() => handleConnect(name)}>
+                    <Button
+                      variant={isConnected ? "outline" : "default"}
+                      onClick={() => handleConnect(name)}
+                    >
                       {isConnected ? "Update Key" : "Connect"}
                     </Button>
                   </div>
@@ -696,10 +646,7 @@ export default function Accounts() {
         </div>
 
         {/* Disconnect Dialog */}
-        <AlertDialog
-          open={disconnectDialog.open}
-          onOpenChange={(open) => setDisconnectDialog({ open, platformName: null })}
-        >
+        <AlertDialog open={disconnectDialog.open} onOpenChange={(open) => setDisconnectDialog({ open, platformName: null })}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Disconnect {disconnectDialog.platformName}?</AlertDialogTitle>
@@ -710,10 +657,7 @@ export default function Accounts() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleDisconnect}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              >
+              <AlertDialogAction onClick={handleDisconnect} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
                 Disconnect
               </AlertDialogAction>
             </AlertDialogFooter>
