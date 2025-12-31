@@ -29,10 +29,6 @@ interface ConnectedAccount {
   avatarUrl: string | null;
   platformIcon: React.ComponentType<{ className?: string }>;
   platformColor: string;
-  details?: {
-    subtitle?: string;
-    extraInfo?: string;
-  };
 }
 
 interface PlatformConfig {
@@ -185,7 +181,7 @@ export default function Accounts() {
 
     const { data, error } = await supabase
       .from("platform_integrations")
-      .select("id, platform_name, credentials")
+      .select("platform_name, credentials")
       .eq("user_id", user.id)
       .eq("status", "active");
 
@@ -201,102 +197,77 @@ export default function Accounts() {
       data.forEach((integration) => {
         const platformName = integration.platform_name.toLowerCase();
         const config = platformConfigs[platformName];
+
         if (!config) return;
 
         const credentials = integration.credentials as any;
-        if (!credentials) return;
 
-        // --- 1. HANDLE OPENAI (Now showing as a standard card) ---
-        if (platformName === "openai") {
-          const mainOrg = credentials.organizations?.[0];
-          accounts.push({
-            id: `openai-${integration.id}`,
-            platform: config.name,
-            accountId: credentials.masked_key || "sk-...****",
-            accountName: credentials.personal_info?.name || "OpenAI API",
-            accountType: "personal",
-            avatarUrl: credentials.personal_info?.avatar_url || null,
-            platformIcon: config.icon,
-            platformColor: config.color,
-            details: {
-              subtitle: mainOrg?.org_title || "API Key",
-              extraInfo: mainOrg?.role ? `Role: ${mainOrg.role}` : "Active Access",
-            },
-          });
-          return; // Skip other checks for OpenAI
-        }
-
-        // --- 2. HANDLE INSTAGRAM (Specific details) ---
-        if (platformName === "instagram" && credentials.ig_username) {
-          accounts.push({
-            id: `ig-${credentials.ig_business_id}`,
-            platform: config.name,
-            accountId: credentials.ig_business_id,
-            accountName: credentials.ig_username,
-            accountType: "personal",
-            avatarUrl: credentials.ig_avatar || null,
-            platformIcon: config.icon,
-            platformColor: config.color,
-            details: {
-              subtitle: `@${credentials.ig_username}`,
-              extraInfo: `${Number(credentials.ig_followers || 0).toLocaleString()} followers`,
-            },
-          });
-        }
-
-        // --- 3. HANDLE FACEBOOK (Specific details) ---
-        if (platformName === "facebook" && credentials.page_id) {
-          accounts.push({
-            id: `fb-${credentials.page_id}`,
-            platform: config.name,
-            accountId: credentials.page_id,
-            accountName: credentials.page_name,
-            accountType: "company",
-            avatarUrl: credentials.page_info?.avatar_url || null,
-            platformIcon: config.icon,
-            platformColor: config.color,
-            details: {
-              subtitle: credentials.category || "Facebook Page",
-              extraInfo: "Active Connection",
-            },
-          });
-        }
-
-        // --- 4. HANDLE LINKEDIN & OTHERS (Standard Structure) ---
-        if (credentials.personal_info && platformName === "linkedin") {
-          accounts.push({
-            id: `${platformName}-personal-${credentials.personal_info.linkedin_id || credentials.personal_info.user_id}`,
-            platform: config.name,
-            accountId: credentials.personal_info.linkedin_id || credentials.personal_info.user_id,
-            accountName: credentials.personal_info.name || `${config.name} User`,
-            accountType: "personal",
-            avatarUrl: credentials.personal_info.avatar_url || null,
-            platformIcon: config.icon,
-            platformColor: config.color,
-            details: {
-              subtitle: credentials.personal_info.headline || "Profile",
-              extraInfo: "Personal Account",
-            },
-          });
-        }
-
-        if (Array.isArray(credentials.company_info)) {
-          credentials.company_info.forEach((company: any) => {
+        // Handle all platforms dynamically based on their credentials structure
+        if (credentials) {
+          // Add personal account if exists
+          if (credentials.personal_info) {
+            const providerId =
+              credentials.personal_info.linkedin_id ||
+              credentials.personal_info.provider_id ||
+              credentials.personal_info.user_id ||
+              `${platformName}-personal`;
             accounts.push({
-              id: `${platformName}-company-${company.company_id || company.page_id}`,
+              id: `${platformName}-personal-${providerId}`,
               platform: config.name,
-              accountId: company.company_id || company.page_id,
-              accountName: company.company_name || company.page_name || "Company",
-              accountType: "company",
-              avatarUrl: company.company_logo || company.page_logo || null,
+              accountId: providerId,
+              accountName: credentials.personal_info.name || `${config.name} User`,
+              accountType: "personal",
+              avatarUrl: credentials.personal_info.avatar_url || null,
               platformIcon: config.icon,
               platformColor: config.color,
-              details: {
-                subtitle: "Company Page",
-                extraInfo: "Administrator Access",
-              },
             });
-          });
+          }
+
+          // Add company/page accounts if exists
+          if (credentials.company_info && Array.isArray(credentials.company_info)) {
+            credentials.company_info.forEach((company: any) => {
+              accounts.push({
+                id: `${platformName}-company-${company.company_id || company.page_id}`,
+                platform: config.name,
+                accountId: company.company_id || company.page_id,
+                accountName: company.company_name || company.page_name || "Company",
+                accountType: "company",
+                avatarUrl: company.company_logo || company.page_logo || null,
+                platformIcon: config.icon,
+                platformColor: config.color,
+              });
+            });
+          }
+
+          // Handle OpenAI - show as connected with masked key
+          if (platformName === "openai" && (credentials.api_key || credentials.masked_key)) {
+            accounts.push({
+              id: `openai-api-${user.id}`,
+              platform: config.name,
+              accountId: credentials.masked_key || "sk-...****",
+              accountName: credentials.masked_key || "API Key Connected",
+              accountType: "personal",
+              avatarUrl: null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+
+          // Handle platforms with just access tokens (no personal_info/company_info structure yet)
+          if (!credentials.personal_info && !credentials.company_info && platformName !== "openai") {
+            if (credentials.access_token || credentials.accessToken) {
+              accounts.push({
+                id: `${platformName}-connected-${user.id}`,
+                platform: config.name,
+                accountId: `${platformName}-${user.id}`,
+                accountName: `${config.name} Account`,
+                accountType: "personal",
+                avatarUrl: null,
+                platformIcon: config.icon,
+                platformColor: config.color,
+              });
+            }
+          }
         }
       });
 
@@ -549,6 +520,7 @@ export default function Accounts() {
 
             return (
               <div key={key} className="space-y-4">
+                {/* Header Row: Same as your current code */}
                 <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
                   <div className="flex items-center gap-3">
                     <div className="p-2 rounded-lg bg-muted/50">
@@ -579,6 +551,32 @@ export default function Accounts() {
                     </Button>
                   </div>
                 </div>
+                {/* --- NEW CARD GRID FOR AI --- */}
+                {isConnected && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {platformAccounts.map((account) => (
+                      <Card key={account.id} className="hover:shadow-lg transition-all duration-300 border-border/50">
+                        <CardHeader className="space-y-3">
+                          <div className="flex items-center gap-3">
+                            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                              <Icon className={`h-6 w-6 ${color}`} />
+                            </div>
+                            <div>
+                              <CardTitle className="text-base">{account.accountName}</CardTitle>
+                              <Badge variant="secondary" className="mt-1 text-xs bg-green-500/10 text-green-600">
+                                API Active
+                              </Badge>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          {/* This is where the magic happens (See Part B below) */}
+                          {renderAccountDetails(account)}
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -661,9 +659,26 @@ export default function Accounts() {
                             </div>
                           </CardHeader>
                           <CardContent>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <span className="h-2 w-2 rounded-full bg-green-500" />
-                              Connected
+                            <div className="space-y-2">
+                              {/* Status Indicator */}
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <span className="h-2 w-2 rounded-full bg-green-500" />
+                                Connected
+                              </div>
+
+                              {/* --- NEW DETAIL LINES --- */}
+                              {account.details?.subtitle && (
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-medium text-foreground">
+                                    {account.details.subtitle}
+                                  </span>
+                                  {account.details?.extraInfo && (
+                                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">
+                                      {account.details.extraInfo}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </CardContent>
                         </Card>
