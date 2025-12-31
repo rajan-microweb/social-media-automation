@@ -570,8 +570,12 @@ export default function Accounts() {
                           </div>
                         </CardHeader>
                         <CardContent>
-                          {/* This is where the magic happens (See Part B below) */}
-                          {renderAccountDetails(account)}
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <span className="h-2 w-2 rounded-full bg-green-500" />
+                              Connected
+                            </div>
+                          </div>
                         </CardContent>
                       </Card>
                     ))}
@@ -660,25 +664,10 @@ export default function Accounts() {
                           </CardHeader>
                           <CardContent>
                             <div className="space-y-2">
-                              {/* Status Indicator */}
                               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                 <span className="h-2 w-2 rounded-full bg-green-500" />
                                 Connected
                               </div>
-
-                              {/* --- NEW DETAIL LINES --- */}
-                              {account.details?.subtitle && (
-                                <div className="flex flex-col">
-                                  <span className="text-xs font-medium text-foreground">
-                                    {account.details.subtitle}
-                                  </span>
-                                  {account.details?.extraInfo && (
-                                    <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">
-                                      {account.details.extraInfo}
-                                    </span>
-                                  )}
-                                </div>
-                              )}
                             </div>
                           </CardContent>
                         </Card>
