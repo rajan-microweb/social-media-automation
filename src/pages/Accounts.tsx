@@ -1,5 +1,5 @@
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -18,7 +18,6 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { OpenAIConnectDialog } from "@/components/OpenAIConnectDialog";
 import { PlatformConnectDialog } from "@/components/PlatformConnectDialog";
 
 interface ConnectedAccount {
@@ -51,11 +50,6 @@ interface LoginActivitySession {
   }[];
 }
 
-interface OpenAICredentials {
-  api_key: string;
-  masked_key: string;
-}
-
 export default function Accounts() {
   const { user } = useAuth();
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
@@ -67,11 +61,8 @@ export default function Accounts() {
     open: false,
     platformName: null,
   });
-  const [openaiDialogOpen, setOpenaiDialogOpen] = useState(false);
-  const [openaiConnected, setOpenaiConnected] = useState(false);
-  const [openaiMaskedKey, setOpenaiMaskedKey] = useState("");
 
-  // State for generic platform connect dialog
+  // State for generic platform connect dialog (including OpenAI)
   const [platformDialog, setPlatformDialog] = useState<{ open: boolean; platform: string | null }>({ open: false, platform: null });
 
   const platformConfigs: Record<string, PlatformConfig> = {
@@ -200,7 +191,6 @@ export default function Accounts() {
     if (data) {
       const accounts: ConnectedAccount[] = [];
 
-      // Handle OpenAI separately
       data.forEach((integration) => {
         const platformName = integration.platform_name.toLowerCase();
         const config = platformConfigs[platformName];
@@ -209,17 +199,14 @@ export default function Accounts() {
 
         const credentials = integration.credentials as any;
 
-        // Handle OpenAI separately
-        if (platformName === "openai") {
-          setOpenaiConnected(true);
-          setOpenaiMaskedKey(credentials?.masked_key || "sk-...****");
-          return;
-        }
-
-        if (platformName === "linkedin" && credentials) {
+        // Handle all platforms dynamically based on their credentials structure
+        if (credentials) {
           // Add personal account if exists
           if (credentials.personal_info) {
-            const providerId = credentials.personal_info.linkedin_id || credentials.personal_info.provider_id;
+            const providerId = credentials.personal_info.linkedin_id || 
+                              credentials.personal_info.provider_id ||
+                              credentials.personal_info.user_id ||
+                              `${platformName}-personal`;
             accounts.push({
               id: `${platformName}-personal-${providerId}`,
               platform: config.name,
@@ -232,38 +219,51 @@ export default function Accounts() {
             });
           }
 
-          // Add company/page accounts
+          // Add company/page accounts if exists
           if (credentials.company_info && Array.isArray(credentials.company_info)) {
             credentials.company_info.forEach((company: any) => {
               accounts.push({
-                id: `${platformName}-company-${company.company_id}`,
+                id: `${platformName}-company-${company.company_id || company.page_id}`,
                 platform: config.name,
-                accountId: company.company_id,
-                accountName: company.company_name || "Company",
+                accountId: company.company_id || company.page_id,
+                accountName: company.company_name || company.page_name || "Company",
                 accountType: "company",
-                avatarUrl: company.company_logo || null,
+                avatarUrl: company.company_logo || company.page_logo || null,
                 platformIcon: config.icon,
                 platformColor: config.color,
               });
             });
           }
-        }
-      });
 
-      // Add mock accounts for demo/testing
-      ["facebook", "instagram", "twitter", "youtube"].forEach((platformName) => {
-        const config = platformConfigs[platformName];
-        if (config) {
-          accounts.push({
-            id: `${platformName}-personal-demo`,
-            platform: config.name,
-            accountId: `${platformName}-demo-id`,
-            accountName: `${config.name} Demo User`,
-            accountType: "personal",
-            avatarUrl: null,
-            platformIcon: config.icon,
-            platformColor: config.color,
-          });
+          // Handle OpenAI - show as connected with masked key
+          if (platformName === "openai" && (credentials.api_key || credentials.masked_key)) {
+            accounts.push({
+              id: `openai-api-${user.id}`,
+              platform: config.name,
+              accountId: credentials.masked_key || "sk-...****",
+              accountName: credentials.masked_key || "API Key Connected",
+              accountType: "personal",
+              avatarUrl: null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+
+          // Handle platforms with just access tokens (no personal_info/company_info structure yet)
+          if (!credentials.personal_info && !credentials.company_info && platformName !== "openai") {
+            if (credentials.access_token || credentials.accessToken) {
+              accounts.push({
+                id: `${platformName}-connected-${user.id}`,
+                platform: config.name,
+                accountId: `${platformName}-${user.id}`,
+                accountName: `${config.name} Account`,
+                accountType: "personal",
+                avatarUrl: null,
+                platformIcon: config.icon,
+                platformColor: config.color,
+              });
+            }
+          }
         }
       });
 
@@ -307,20 +307,10 @@ export default function Accounts() {
       return;
     }
 
-    // Handle OpenAI separately
-    if (platform === "OpenAI") {
-      setOpenaiDialogOpen(true);
-      return;
-    }
-
-    // Open the custom dialog for LinkedIn, Facebook, Instagram, Threads, Twitter
-    if (["LinkedIn", "Facebook", "Instagram", "Threads", "Twitter"].includes(platform)) {
-      setPlatformDialog({ open: true, platform });
-      return;
-    }
-
-    toast.success(`Connecting to ${platform}...`);
+    // Open the platform dialog for all platforms including OpenAI
+    setPlatformDialog({ open: true, platform });
   };
+
   // Handle submit from PlatformConnectDialog
   const handlePlatformDialogSubmit = async (fields: Record<string, string>) => {
     if (!user?.id || !platformDialog.platform) {
@@ -333,7 +323,7 @@ export default function Accounts() {
       (key) => platformConfigs[key].name.toLowerCase() === platformDialog.platform?.toLowerCase()
     ) || platformDialog.platform.toLowerCase();
 
-    // POST credentials to external webhook instead of saving to DB
+    // POST credentials to external webhook (same flow for all platforms including OpenAI)
     try {
       const response = await fetch("https://n8n.srv1044933.hstgr.cloud/webhook/fetch-credentials", {
         method: "POST",
@@ -392,12 +382,6 @@ export default function Accounts() {
         return;
       }
 
-      // Reset OpenAI state if disconnecting OpenAI
-      if (platformKey === "openai") {
-        setOpenaiConnected(false);
-        setOpenaiMaskedKey("");
-      }
-
       toast.success(`${platformName} disconnected successfully`);
     } catch (error) {
       console.error("Error disconnecting platform:", error);
@@ -447,7 +431,7 @@ export default function Accounts() {
 
   return (
     <DashboardLayout>
-      {/* Platform Connect Dialog for LinkedIn, Facebook, Instagram, Threads, Twitter */}
+      {/* Platform Connect Dialog for all platforms including OpenAI */}
       <PlatformConnectDialog
         open={platformDialog.open}
         platform={platformDialog.platform}
@@ -525,7 +509,9 @@ export default function Accounts() {
         <div className="space-y-4">
           <h2 className="text-xl font-semibold">AI Integrations</h2>
           {apiKeyPlatforms.map(({ key, name, icon: Icon, color }) => {
-            const isConnected = key === "openai" && openaiConnected;
+            const platformAccounts = accountsByPlatform[name] || [];
+            const isConnected = platformAccounts.length > 0;
+            const connectedAccount = platformAccounts[0];
 
             return (
               <div key={key} className="space-y-4">
@@ -540,7 +526,7 @@ export default function Accounts() {
                         {isConnected ? (
                           <span className="flex items-center gap-2">
                             <span className="h-2 w-2 rounded-full bg-green-500" />
-                            Connected ({openaiMaskedKey})
+                            Connected ({connectedAccount?.accountName || "API Key"})
                           </span>
                         ) : (
                           "Not connected"
@@ -677,17 +663,6 @@ export default function Accounts() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-
-        {/* OpenAI Connect Dialog */}
-        <OpenAIConnectDialog
-          open={openaiDialogOpen}
-          onClose={() => setOpenaiDialogOpen(false)}
-          onSuccess={() => {
-            setOpenaiConnected(true);
-            fetchConnectedAccounts();
-          }}
-          userId={user?.id || ""}
-        />
       </div>
     </DashboardLayout>
   );
