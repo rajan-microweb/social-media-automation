@@ -181,7 +181,7 @@ export default function Accounts() {
 
     const { data, error } = await supabase
       .from("platform_integrations")
-      .select("platform_name, credentials")
+      .select("id", "platform_name, credentials")
       .eq("user_id", user.id)
       .eq("status", "active");
 
@@ -202,63 +202,52 @@ export default function Accounts() {
         const credentials = integration.credentials as any;
         if (!credentials) return;
 
-        // --- 1. HANDLE OPENAI (Now showing as a standard card) ---
+        // --- HANDLE OPENAI ---
         if (platformName === "openai") {
-          const mainOrg = credentials.organizations?.[0];
+          const orgName = credentials.organizations?.[0]?.org_title;
           accounts.push({
             id: `openai-${integration.id}`,
             platform: config.name,
             accountId: credentials.masked_key || "sk-...****",
-            accountName: credentials.personal_info?.name || "OpenAI API",
+            // Use Org Name if available, else standard name
+            accountName: orgName ? `OpenAI (${orgName})` : "OpenAI API",
             accountType: "personal",
             avatarUrl: credentials.personal_info?.avatar_url || null,
             platformIcon: config.icon,
             platformColor: config.color,
-            details: {
-              subtitle: mainOrg?.org_title || "API Key",
-              extraInfo: mainOrg?.role ? `Role: ${mainOrg.role}` : "Active Access",
-            },
           });
-          return; // Skip other checks for OpenAI
+          return;
         }
 
-        // --- 2. HANDLE INSTAGRAM (Specific details) ---
+        // --- HANDLE INSTAGRAM ---
         if (platformName === "instagram" && credentials.ig_username) {
           accounts.push({
             id: `ig-${credentials.ig_business_id}`,
             platform: config.name,
             accountId: credentials.ig_business_id,
-            accountName: credentials.ig_username,
+            accountName: `@${credentials.ig_username}`,
             accountType: "personal",
             avatarUrl: credentials.ig_avatar || null,
             platformIcon: config.icon,
             platformColor: config.color,
-            details: {
-              subtitle: `@${credentials.ig_username}`,
-              extraInfo: `${Number(credentials.ig_followers || 0).toLocaleString()} followers`,
-            },
           });
         }
 
-        // --- 3. HANDLE FACEBOOK (Specific details) ---
+        // --- HANDLE FACEBOOK ---
         if (platformName === "facebook" && credentials.page_id) {
           accounts.push({
             id: `fb-${credentials.page_id}`,
             platform: config.name,
             accountId: credentials.page_id,
-            accountName: credentials.page_name,
+            accountName: credentials.page_name || "Facebook Page",
             accountType: "company",
             avatarUrl: credentials.page_info?.avatar_url || null,
             platformIcon: config.icon,
             platformColor: config.color,
-            details: {
-              subtitle: credentials.category || "Facebook Page",
-              extraInfo: "Active Connection",
-            },
           });
         }
 
-        // --- 4. HANDLE LINKEDIN & OTHERS (Standard Structure) ---
+        // --- HANDLE LINKEDIN & OTHERS ---
         if (credentials.personal_info && platformName === "linkedin") {
           accounts.push({
             id: `${platformName}-personal-${credentials.personal_info.linkedin_id || credentials.personal_info.user_id}`,
@@ -269,10 +258,6 @@ export default function Accounts() {
             avatarUrl: credentials.personal_info.avatar_url || null,
             platformIcon: config.icon,
             platformColor: config.color,
-            details: {
-              subtitle: credentials.personal_info.headline || "Profile",
-              extraInfo: "Personal Account",
-            },
           });
         }
 
@@ -287,18 +272,12 @@ export default function Accounts() {
               avatarUrl: company.company_logo || company.page_logo || null,
               platformIcon: config.icon,
               platformColor: config.color,
-              details: {
-                subtitle: "Company Page",
-                extraInfo: "Administrator Access",
-              },
             });
           });
         }
       });
 
       setConnectedAccounts(accounts);
-
-      // Fetch login activity after getting connected accounts
       const linkedInIds = accounts.filter((acc) => acc.platform === "LinkedIn").map((acc) => acc.accountId);
       await fetchLoginActivity(linkedInIds);
     }
