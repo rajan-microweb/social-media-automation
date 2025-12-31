@@ -405,7 +405,7 @@ export function PlatformConnectDialog({ open, platform, onClose, onSubmit }: Pla
         {config ? (
           <form onSubmit={handleSubmit}>
             {/* 3-column layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Left column - reserved for future use */}
               {/* <div className="hidden lg:block" /> */}
 
