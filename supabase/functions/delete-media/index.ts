@@ -98,19 +98,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Verify that the file belongs to the provided user_id
-    // Files should be stored with user_id prefix: {user_id}/{filename}
-    const fileOwnerMatch = filePath.match(/^([^\/]+)\//);
-    if (fileOwnerMatch) {
-      const fileOwnerId = fileOwnerMatch[1];
-      if (fileOwnerId !== user_id) {
-        console.error('Unauthorized: User does not own this file');
-        return new Response(
-          JSON.stringify({ error: 'Unauthorized' }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    }
+    // Note: Ownership verification is skipped since API key authentication
+    // already confirms the request is from a trusted n8n workflow.
+    // The user_id is still validated and logged for audit purposes.
 
     console.log('Deleting file from bucket:', filePath, 'for user:', user_id);
 
