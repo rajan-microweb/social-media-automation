@@ -407,6 +407,12 @@ export default function Accounts() {
 
     setRefreshing(true);
     try {
+      // Map display name to key used in DB (lowercase)
+      const platformKey =
+        Object.keys(platformConfigs).find(
+          (key) => platformConfigs[key].name.toLowerCase() === platformDialog.platform?.toLowerCase(),
+        ) || platformDialog.platform.toLowerCase();
+
       const response = await fetch("https://n8n.srv1044933.hstgr.cloud/webhook/update-credentials", {
         method: "POST",
         headers: {
