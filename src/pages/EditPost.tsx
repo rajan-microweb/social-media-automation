@@ -449,10 +449,10 @@ export default function EditPost() {
 
       postSchema.parse(data);
 
-      // Use edge function to update post (bypasses RLS restrictions)
-      const { data: updateResult, error } = await supabase.functions.invoke('update-post', {
-        body: {
-          post_id: id,
+      // Use direct Supabase client to update post (for UI updates)
+      const { error } = await supabase
+        .from("posts")
+        .update({
           type_of_post: data.type_of_post,
           platforms: data.platforms,
           account_type: data.account_type ?? null,
@@ -466,11 +466,11 @@ export default function EditPost() {
           tags: data.tags.length > 0 ? data.tags : null,
           status: data.status,
           scheduled_at: data.scheduled_at ?? null,
-        }
-      });
+        })
+        .eq("id", id)
+        .eq("user_id", user!.id);
 
       if (error) throw error;
-      if (updateResult?.error) throw new Error(updateResult.error);
 
       toast.success("Post updated successfully");
       navigate("/posts");
