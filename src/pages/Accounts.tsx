@@ -421,7 +421,6 @@ export default function Accounts() {
         body: JSON.stringify({
           platform_name: platformKey,
           user_id: user.id,
-          ...fields,
         }),
       });
 
