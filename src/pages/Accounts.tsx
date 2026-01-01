@@ -13,7 +13,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Instagram, Linkedin, Twitter, ShieldAlert, X, Monitor, Brain, Facebook, Youtube, RefreshCw } from "lucide-react";
+import {
+  Instagram,
+  Linkedin,
+  Twitter,
+  ShieldAlert,
+  X,
+  Monitor,
+  Brain,
+  Facebook,
+  Youtube,
+  RefreshCw,
+} from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -335,20 +346,18 @@ export default function Accounts() {
 
     // Step 1: Store credentials in the database first
     try {
-      const { error: upsertError } = await supabase
-        .from("platform_integrations")
-        .upsert(
-          {
-            user_id: user.id,
-            platform_name: platformKey,
-            credentials: fields,
-            status: "active",
-            updated_at: new Date().toISOString(),
-          },
-          {
-            onConflict: "user_id,platform_name",
-          }
-        );
+      const { error: upsertError } = await supabase.from("platform_integrations").upsert(
+        {
+          user_id: user.id,
+          platform_name: platformKey,
+          credentials: fields,
+          status: "active",
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: "user_id,platform_name",
+        },
+      );
 
       if (upsertError) {
         console.error("Error storing credentials:", upsertError);
@@ -360,7 +369,7 @@ export default function Accounts() {
 
       // Step 2: Only after successful storage, call the n8n webhook
       try {
-        const response = await fetch("https://n8n.srv1044933.hstgr.cloud/webhook/fetch-credentials", {
+        const response = await fetch("https://n8n.srv1044933.hstgr.cloud/webhook/update-credentials", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -683,19 +692,12 @@ export default function Accounts() {
                       </Button>
                     )}
                     {platformAccounts.length > 0 ? (
-                      <Button
-                        variant="outline"
-                        onClick={handleRefresh}
-                        disabled={refreshing}
-                      >
+                      <Button variant="outline" onClick={handleRefresh} disabled={refreshing}>
                         <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
                         {refreshing ? "Refreshing..." : "Refresh"}
                       </Button>
                     ) : (
-                      <Button
-                        variant="default"
-                        onClick={() => handleConnect(platformName)}
-                      >
+                      <Button variant="default" onClick={() => handleConnect(platformName)}>
                         Connect
                       </Button>
                     )}
