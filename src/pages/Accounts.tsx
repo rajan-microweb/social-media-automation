@@ -413,9 +413,7 @@ export default function Accounts() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          platform_name: platformKey,
           user_id: user.id,
-          ...fields,
         }),
       });
 
