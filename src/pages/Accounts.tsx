@@ -65,7 +65,7 @@ export default function Accounts() {
   const { user } = useAuth();
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [refreshingPlatform, setRefreshingPlatform] = useState<string | null>(null);
   const [loginActivity, setLoginActivity] = useState<LoginActivitySession[]>([]);
   const [loadingActivity, setLoadingActivity] = useState(false);
   const [revokingSession, setRevokingSession] = useState<string | null>(null);
@@ -398,21 +398,21 @@ export default function Accounts() {
     setPlatformDialog({ open: false, platform: null });
   };
 
-  // Handle refresh button click
-  const handleRefresh = async () => {
+  // Handle refresh button click for a specific platform
+  const handleRefresh = async (platformName: string) => {
     if (!user?.id) {
       toast.error("Please log in to refresh credentials");
       return;
     }
 
-    setRefreshing(true);
-    try {
-      // Map display name to key used in DB (lowercase)
-      const platformKey =
-        Object.keys(platformConfigs).find(
-          (key) => platformConfigs[key].name.toLowerCase() === platformDialog.platform?.toLowerCase(),
-        ) || platformDialog.platform.toLowerCase();
+    // Map display name to key used in DB (lowercase)
+    const platformKey =
+      Object.keys(platformConfigs).find(
+        (key) => platformConfigs[key].name.toLowerCase() === platformName.toLowerCase(),
+      ) || platformName.toLowerCase();
 
+    setRefreshingPlatform(platformKey);
+    try {
       const response = await fetch("https://n8n.srv1044933.hstgr.cloud/webhook/update-credentials", {
         method: "POST",
         headers: {
@@ -429,14 +429,14 @@ export default function Accounts() {
         throw new Error(errorText || `HTTP ${response.status}`);
       }
 
-      toast.success("Credentials refreshed successfully!");
+      toast.success(`${platformName} credentials refreshed successfully!`);
       // Refetch accounts to show updated data
       await fetchConnectedAccounts();
     } catch (error) {
       console.error("Error refreshing credentials:", error);
-      toast.error(`Failed to refresh credentials: ${error instanceof Error ? error.message : "Unknown error"}`);
+      toast.error(`Failed to refresh ${platformName} credentials: ${error instanceof Error ? error.message : "Unknown error"}`);
     } finally {
-      setRefreshing(false);
+      setRefreshingPlatform(null);
     }
   };
 
@@ -699,9 +699,13 @@ export default function Accounts() {
                       </Button>
                     )}
                     {platformAccounts.length > 0 ? (
-                      <Button variant="outline" onClick={handleRefresh} disabled={refreshing}>
-                        <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
-                        {refreshing ? "Refreshing..." : "Refresh"}
+                      <Button 
+                        variant="outline" 
+                        onClick={() => handleRefresh(platformName)} 
+                        disabled={refreshingPlatform !== null}
+                      >
+                        <RefreshCw className={`h-4 w-4 mr-2 ${refreshingPlatform === platformKey ? "animate-spin" : ""}`} />
+                        {refreshingPlatform === platformKey ? "Refreshing..." : "Refresh"}
                       </Button>
                     ) : (
                       <Button variant="default" onClick={() => handleConnect(platformName)}>
