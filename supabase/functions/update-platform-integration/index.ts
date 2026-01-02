@@ -43,49 +43,28 @@ const updatePlatformIntegrationSchema = z.object({
     .strict(),
 });
 
-// Helper function to merge credentials, combining arrays by unique identifiers
-function mergeCredentials(
+// Helper function to append credentials - arrays get new items appended
+function appendCredentials(
   existing: Record<string, unknown>,
   incoming: Record<string, unknown>
 ): Record<string, unknown> {
-  const merged: Record<string, unknown> = { ...existing };
+  const result: Record<string, unknown> = { ...existing };
 
   for (const [key, value] of Object.entries(incoming)) {
     if (Array.isArray(value) && Array.isArray(existing[key])) {
-      // Merge arrays by unique identifier (id, page_id, account_id, or access_token)
-      const existingArray = existing[key] as Record<string, unknown>[];
-      const incomingArray = value as Record<string, unknown>[];
-      
-      const mergedArray = [...existingArray];
-      
-      for (const incomingItem of incomingArray) {
-        const identifier = incomingItem.id || incomingItem.page_id || incomingItem.account_id || incomingItem.access_token;
-        const existingIndex = mergedArray.findIndex((item) => {
-          const itemId = item.id || item.page_id || item.account_id || item.access_token;
-          return itemId && itemId === identifier;
-        });
-        
-        if (existingIndex >= 0) {
-          // Update existing item
-          mergedArray[existingIndex] = { ...mergedArray[existingIndex], ...incomingItem };
-        } else {
-          // Add new item
-          mergedArray.push(incomingItem);
-        }
-      }
-      
-      merged[key] = mergedArray;
+      // Simply append new items to existing array
+      result[key] = [...(existing[key] as unknown[]), ...value];
     } else if (value !== null && typeof value === 'object' && !Array.isArray(value) && 
                existing[key] && typeof existing[key] === 'object' && !Array.isArray(existing[key])) {
-      // Deep merge objects
-      merged[key] = mergeCredentials(existing[key] as Record<string, unknown>, value as Record<string, unknown>);
+      // Recursively handle nested objects
+      result[key] = appendCredentials(existing[key] as Record<string, unknown>, value as Record<string, unknown>);
     } else {
       // Override primitive values or add new keys
-      merged[key] = value;
+      result[key] = value;
     }
   }
 
-  return merged;
+  return result;
 }
 
 Deno.serve(async (req) => {
@@ -159,14 +138,13 @@ Deno.serve(async (req) => {
       credentials_encrypted: true, // Skip encryption trigger, store as plain JSON
     };
 
-    // Merge credentials if provided - combine existing with new
+    // Append credentials if provided - combine existing with new
     if (updates.credentials) {
       const existingCredentials = existingData?.credentials || {};
-      // Deep merge: new credentials override existing ones for same keys
-      // For arrays like accounts/pages, we merge by unique identifier
-      const mergedCredentials = mergeCredentials(existingCredentials as Record<string, unknown>, updates.credentials);
-      updateData.credentials = mergedCredentials;
-      console.info("Merged credentials:", JSON.stringify(mergedCredentials, null, 2));
+      // Append new items to arrays, override primitives
+      const appendedCredentials = appendCredentials(existingCredentials as Record<string, unknown>, updates.credentials);
+      updateData.credentials = appendedCredentials;
+      console.info("Appended credentials:", JSON.stringify(appendedCredentials, null, 2));
     }
 
     // Add status if provided
