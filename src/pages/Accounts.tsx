@@ -231,32 +231,94 @@ export default function Accounts() {
           return;
         }
 
-        // --- HANDLE INSTAGRAM ---
-        if (platformName === "instagram" && credentials.ig_username) {
-          accounts.push({
-            id: `ig-${credentials.ig_business_id}`,
-            platform: config.name,
-            accountId: credentials.ig_business_id,
-            accountName: `@${credentials.ig_username}`,
-            accountType: "personal",
-            avatarUrl: credentials.ig_avatar || null,
-            platformIcon: config.icon,
-            platformColor: config.color,
-          });
+        // --- HANDLE INSTAGRAM (like LinkedIn: personal + accounts array) ---
+        if (platformName === "instagram") {
+          // Personal account
+          if (credentials.personal_info) {
+            accounts.push({
+              id: `ig-personal-${credentials.personal_info.ig_business_id || credentials.personal_info.user_id}`,
+              platform: config.name,
+              accountId: credentials.personal_info.ig_business_id || credentials.personal_info.user_id,
+              accountName: credentials.personal_info.ig_username ? `@${credentials.personal_info.ig_username}` : "Instagram User",
+              accountType: "personal",
+              avatarUrl: credentials.personal_info.ig_avatar || credentials.personal_info.avatar_url || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+          // Multiple accounts array
+          if (Array.isArray(credentials.accounts)) {
+            credentials.accounts.forEach((account: any) => {
+              accounts.push({
+                id: `ig-account-${account.ig_business_id}`,
+                platform: config.name,
+                accountId: account.ig_business_id,
+                accountName: account.ig_username ? `@${account.ig_username}` : "Instagram Account",
+                accountType: "company",
+                avatarUrl: account.ig_avatar || null,
+                platformIcon: config.icon,
+                platformColor: config.color,
+              });
+            });
+          }
+          // Legacy single account format
+          if (!credentials.personal_info && !credentials.accounts && credentials.ig_username) {
+            accounts.push({
+              id: `ig-${credentials.ig_business_id}`,
+              platform: config.name,
+              accountId: credentials.ig_business_id,
+              accountName: `@${credentials.ig_username}`,
+              accountType: "personal",
+              avatarUrl: credentials.ig_avatar || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
         }
 
-        // --- HANDLE FACEBOOK ---
-        if (platformName === "facebook" && credentials.page_id) {
-          accounts.push({
-            id: `fb-${credentials.page_id}`,
-            platform: config.name,
-            accountId: credentials.page_id,
-            accountName: credentials.page_name || "Facebook Page",
-            accountType: "company",
-            avatarUrl: credentials.page_info?.avatar_url || null,
-            platformIcon: config.icon,
-            platformColor: config.color,
-          });
+        // --- HANDLE FACEBOOK (like LinkedIn: personal + pages array) ---
+        if (platformName === "facebook") {
+          // Personal account
+          if (credentials.personal_info) {
+            accounts.push({
+              id: `fb-personal-${credentials.personal_info.user_id}`,
+              platform: config.name,
+              accountId: credentials.personal_info.user_id,
+              accountName: credentials.personal_info.name || "Facebook User",
+              accountType: "personal",
+              avatarUrl: credentials.personal_info.avatar_url || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+          // Multiple pages array
+          if (Array.isArray(credentials.pages)) {
+            credentials.pages.forEach((page: any) => {
+              accounts.push({
+                id: `fb-page-${page.page_id}`,
+                platform: config.name,
+                accountId: page.page_id,
+                accountName: page.page_name || "Facebook Page",
+                accountType: "company",
+                avatarUrl: page.avatar_url || null,
+                platformIcon: config.icon,
+                platformColor: config.color,
+              });
+            });
+          }
+          // Legacy single page format
+          if (!credentials.personal_info && !credentials.pages && credentials.page_id) {
+            accounts.push({
+              id: `fb-${credentials.page_id}`,
+              platform: config.name,
+              accountId: credentials.page_id,
+              accountName: credentials.page_name || "Facebook Page",
+              accountType: "company",
+              avatarUrl: credentials.page_info?.avatar_url || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
         }
 
         // --- HANDLE LINKEDIN & OTHERS ---
