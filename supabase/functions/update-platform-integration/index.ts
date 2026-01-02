@@ -93,16 +93,57 @@ Deno.serve(async (req) => {
 
     console.info("Updating platform integration:", { platform_name, user_id, updates });
 
-    // Build update data - full replacement of credentials
+    // First, fetch existing credentials to merge with updates
+    const { data: existingData, error: fetchError } = await supabase
+      .from("platform_integrations")
+      .select("credentials")
+      .eq("platform_name", platform_name)
+      .eq("user_id", user_id)
+      .single();
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      console.error("Error fetching existing credentials:", fetchError);
+      return new Response(JSON.stringify({ error: fetchError.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const existingCredentials = existingData?.credentials || {};
+    console.info("Existing credentials keys:", Object.keys(existingCredentials));
+
+    // Build update data - MERGE credentials instead of replacing
     const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
       credentials_encrypted: true, // Skip encryption trigger, store as plain JSON
     };
 
-    // Full replacement: incoming credentials completely replace existing ones
+    // Merge: incoming credentials are merged with existing ones (incoming values take priority)
     if (updates.credentials) {
-      updateData.credentials = updates.credentials;
-      console.info("Replaced credentials:", JSON.stringify(updates.credentials, null, 2));
+      // Deep merge for nested objects like personal_info and company_info
+      const mergedCredentials = {
+        ...existingCredentials,
+        ...updates.credentials,
+      };
+      
+      // Preserve tokens if not provided in updates
+      if (!updates.credentials.access_token && existingCredentials.access_token) {
+        mergedCredentials.access_token = existingCredentials.access_token;
+      }
+      if (!updates.credentials.refresh_token && existingCredentials.refresh_token) {
+        mergedCredentials.refresh_token = existingCredentials.refresh_token;
+      }
+      if (!updates.credentials.expires_at && existingCredentials.expires_at) {
+        mergedCredentials.expires_at = existingCredentials.expires_at;
+      }
+      if (!updates.credentials.scope && existingCredentials.scope) {
+        mergedCredentials.scope = existingCredentials.scope;
+      }
+      
+      updateData.credentials = mergedCredentials;
+      console.info("Merged credentials keys:", Object.keys(mergedCredentials));
+      console.info("Has access_token:", !!mergedCredentials.access_token);
+      console.info("Has refresh_token:", !!mergedCredentials.refresh_token);
     }
 
     // Add status if provided
