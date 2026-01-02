@@ -92,19 +92,23 @@ Deno.serve(async (req) => {
 
     console.info("Updating platform integration:", { platform_name, user_id, updates });
 
-    // Add updated_at timestamp to validated updates
-    // If credentials are being updated, mark as unencrypted so trigger re-encrypts
+    // Build update data with proper structure
     const updateData: Record<string, unknown> = {
-      ...updates,
       updated_at: new Date().toISOString(),
+      credentials_encrypted: true, // Skip encryption trigger, store as plain JSON
     };
 
-    // if (updates.credentials) {
-    //   updateData.credentials_encrypted = true; // Trigger will encrypt and set to true
-    // }
+    // Add credentials directly (not nested) if provided
+    if (updates.credentials) {
+      updateData.credentials = updates.credentials;
+    }
 
-    // FORCE THIS TO TRUE: This prevents the encryption trigger from running
-    updateData.credentials_encrypted = true;
+    // Add status if provided
+    if (updates.status) {
+      updateData.status = updates.status;
+    }
+
+    console.info("Update data being sent:", JSON.stringify(updateData, null, 2));
 
     // Update only for provided user_id
     const { data, error } = await supabase
