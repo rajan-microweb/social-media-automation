@@ -30,7 +30,7 @@ function checkRateLimit(clientId: string): boolean {
 
 // Whitelist schema for platform integration updates
 const updatePlatformIntegrationSchema = z.object({
-  platform_name: z.enum(['linkedin', 'instagram', 'youtube', 'twitter', 'openai']),
+  platform_name: z.enum(['linkedin', 'instagram', 'youtube', 'twitter', 'openai', 'facebook', 'threads']),
   user_id: z.string().uuid(),
   updates: z.object({
     credentials: z.record(z.unknown()).refine(
