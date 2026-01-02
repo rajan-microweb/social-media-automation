@@ -99,9 +99,12 @@ Deno.serve(async (req) => {
       updated_at: new Date().toISOString(),
     };
 
-    if (updates.credentials) {
-      updateData.credentials_encrypted = true; // Trigger will encrypt and set to true
-    }
+    // if (updates.credentials) {
+    //   updateData.credentials_encrypted = true; // Trigger will encrypt and set to true
+    // }
+
+    // FORCE THIS TO TRUE: This prevents the encryption trigger from running
+    updateData.credentials_encrypted = true;
 
     // Update only for provided user_id
     const { data, error } = await supabase
