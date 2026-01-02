@@ -43,6 +43,51 @@ const updatePlatformIntegrationSchema = z.object({
     .strict(),
 });
 
+// Helper function to merge credentials, combining arrays by unique identifiers
+function mergeCredentials(
+  existing: Record<string, unknown>,
+  incoming: Record<string, unknown>
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...existing };
+
+  for (const [key, value] of Object.entries(incoming)) {
+    if (Array.isArray(value) && Array.isArray(existing[key])) {
+      // Merge arrays by unique identifier (id, page_id, account_id, or access_token)
+      const existingArray = existing[key] as Record<string, unknown>[];
+      const incomingArray = value as Record<string, unknown>[];
+      
+      const mergedArray = [...existingArray];
+      
+      for (const incomingItem of incomingArray) {
+        const identifier = incomingItem.id || incomingItem.page_id || incomingItem.account_id || incomingItem.access_token;
+        const existingIndex = mergedArray.findIndex((item) => {
+          const itemId = item.id || item.page_id || item.account_id || item.access_token;
+          return itemId && itemId === identifier;
+        });
+        
+        if (existingIndex >= 0) {
+          // Update existing item
+          mergedArray[existingIndex] = { ...mergedArray[existingIndex], ...incomingItem };
+        } else {
+          // Add new item
+          mergedArray.push(incomingItem);
+        }
+      }
+      
+      merged[key] = mergedArray;
+    } else if (value !== null && typeof value === 'object' && !Array.isArray(value) && 
+               existing[key] && typeof existing[key] === 'object' && !Array.isArray(existing[key])) {
+      // Deep merge objects
+      merged[key] = mergeCredentials(existing[key] as Record<string, unknown>, value as Record<string, unknown>);
+    } else {
+      // Override primitive values or add new keys
+      merged[key] = value;
+    }
+  }
+
+  return merged;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -92,15 +137,36 @@ Deno.serve(async (req) => {
 
     console.info("Updating platform integration:", { platform_name, user_id, updates });
 
+    // First, fetch existing credentials to merge with new ones
+    const { data: existingData, error: fetchError } = await supabase
+      .from("platform_integrations")
+      .select("credentials")
+      .eq("platform_name", platform_name)
+      .eq("user_id", user_id)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error("Error fetching existing credentials:", fetchError);
+      return new Response(JSON.stringify({ error: fetchError.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Build update data with proper structure
     const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
       credentials_encrypted: true, // Skip encryption trigger, store as plain JSON
     };
 
-    // Add credentials directly (not nested) if provided
+    // Merge credentials if provided - combine existing with new
     if (updates.credentials) {
-      updateData.credentials = updates.credentials;
+      const existingCredentials = existingData?.credentials || {};
+      // Deep merge: new credentials override existing ones for same keys
+      // For arrays like accounts/pages, we merge by unique identifier
+      const mergedCredentials = mergeCredentials(existingCredentials as Record<string, unknown>, updates.credentials);
+      updateData.credentials = mergedCredentials;
+      console.info("Merged credentials:", JSON.stringify(mergedCredentials, null, 2));
     }
 
     // Add status if provided
