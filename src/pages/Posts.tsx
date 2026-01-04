@@ -14,7 +14,8 @@ import { DateRange } from "react-day-picker";
 import { FilterBar } from "@/components/posts/FilterBar";
 import { BulkActionToolbar } from "@/components/posts/BulkActionToolbar";
 import { SortDropdown, SortField, SortOrder } from "@/components/posts/SortDropdown";
-import { RecentActivityFeed, ActivityItem } from "@/components/posts/RecentActivityFeed";
+import { PlatformActivityFeed } from "@/components/posts/PlatformActivityFeed";
+import { usePlatformActivity } from "@/hooks/usePlatformActivity";
 
 interface Post {
   id: string;
@@ -40,8 +41,9 @@ export default function Posts() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [bulkLoading, setBulkLoading] = useState(false);
-  const [activityItems, setActivityItems] = useState<ActivityItem[]>([]);
-  const [activityLoading, setActivityLoading] = useState(true);
+
+  // Platform activity hook
+  const { activities: platformActivities, loading: platformActivityLoading, refresh: refreshPlatformActivity } = usePlatformActivity(user?.id);
 
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -59,7 +61,6 @@ export default function Posts() {
   useEffect(() => {
     if (!user) return;
     fetchPosts();
-    fetchRecentActivity();
   }, [user]);
 
   const fetchPosts = async () => {
@@ -75,46 +76,6 @@ export default function Posts() {
       setPosts(data || []);
     }
     setLoading(false);
-  };
-
-  const fetchRecentActivity = async () => {
-    setActivityLoading(true);
-    try {
-      const [postsRes, storiesRes] = await Promise.all([
-        supabase
-          .from("posts")
-          .select("id, title, status, platforms, updated_at")
-          .eq("user_id", user!.id)
-          .order("updated_at", { ascending: false })
-          .limit(10),
-        supabase
-          .from("stories")
-          .select("id, title, status, platforms, updated_at")
-          .eq("user_id", user!.id)
-          .order("updated_at", { ascending: false })
-          .limit(10),
-      ]);
-
-      const postsData: ActivityItem[] = (postsRes.data || []).map((p) => ({
-        ...p,
-        type: "post" as const,
-      }));
-
-      const storiesData: ActivityItem[] = (storiesRes.data || []).map((s) => ({
-        ...s,
-        type: "story" as const,
-      }));
-
-      const combined = [...postsData, ...storiesData]
-        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-        .slice(0, 10);
-
-      setActivityItems(combined);
-    } catch (error) {
-      console.error("Failed to fetch activity:", error);
-    } finally {
-      setActivityLoading(false);
-    }
   };
 
   const handleDelete = async (id: string) => {
@@ -352,7 +313,11 @@ export default function Posts() {
           />
         )}
 
-        <RecentActivityFeed items={activityItems} loading={activityLoading} />
+        <PlatformActivityFeed 
+          items={platformActivities} 
+          loading={platformActivityLoading} 
+          onRefresh={refreshPlatformActivity}
+        />
 
         {loading ? (
           <div className="text-center py-12">Loading...</div>

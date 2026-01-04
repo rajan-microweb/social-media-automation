@@ -50,3 +50,6 @@ verify_jwt = true
 
 [functions.get-all-posts]
 verify_jwt = false
+
+[functions.get-platform-activity]
+verify_jwt = true
