@@ -239,7 +239,9 @@ export default function Accounts() {
               id: `ig-personal-${credentials.personal_info.ig_business_id || credentials.personal_info.user_id}`,
               platform: config.name,
               accountId: credentials.personal_info.ig_business_id || credentials.personal_info.user_id,
-              accountName: credentials.personal_info.ig_username ? `@${credentials.personal_info.ig_username}` : "Instagram User",
+              accountName: credentials.personal_info.ig_username
+                ? `@${credentials.personal_info.ig_username}`
+                : "Instagram User",
               accountType: "personal",
               avatarUrl: credentials.personal_info.ig_avatar || credentials.personal_info.avatar_url || null,
               platformIcon: config.icon,
@@ -431,7 +433,7 @@ export default function Accounts() {
 
       // Step 2: Only after successful storage, call the n8n webhook
       try {
-        const response = await fetch("https://n8n.srv1044933.hstgr.cloud/webhook/update-credentials", {
+        const response = await fetch("https://n8n.srv1248804.hstgr.cloud/webhook/update-credentials", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -475,7 +477,7 @@ export default function Accounts() {
 
     setRefreshingPlatform(platformKey);
     try {
-      const response = await fetch("https://n8n.srv1044933.hstgr.cloud/webhook/update-credentials?action=refresh", {
+      const response = await fetch("https://n8n.srv1248804.hstgr.cloud/webhook/update-credentials?action=refresh", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

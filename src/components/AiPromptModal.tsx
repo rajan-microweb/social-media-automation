@@ -31,7 +31,7 @@ export function AiPromptModal({
   onGenerate,
   fieldType,
   title = "AI Content Generator",
-  context
+  context,
 }: AiPromptModalProps) {
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
@@ -56,7 +56,7 @@ export function AiPromptModal({
         title: context?.title,
         description: context?.description,
       };
-      
+
       // Add the prompt based on field type
       if (fieldType === "text") {
         payload.textPrompt = prompt;
@@ -68,14 +68,11 @@ export function AiPromptModal({
         payload.pdfPrompt = prompt;
       }
 
-      const response = await fetch(
-        "https://n8n.srv1044933.hstgr.cloud/webhook/ai-content-generator",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        }
-      );
+      const response = await fetch("https://n8n.srv1248804.hstgr.cloud/webhook/ai-content-generator", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
       if (!response.ok) {
         throw new Error("Failed to generate content");
@@ -136,19 +133,10 @@ export function AiPromptModal({
             />
           </div>
           <div className="flex justify-end gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleClose}
-              disabled={loading}
-            >
+            <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>
               Cancel
             </Button>
-            <Button
-              type="button"
-              onClick={handleGenerate}
-              disabled={loading}
-            >
+            <Button type="button" onClick={handleGenerate} disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Generate
             </Button>
