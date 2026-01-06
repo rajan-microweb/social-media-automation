@@ -16,7 +16,7 @@ import {
   parseISO,
   getHours,
 } from "date-fns";
-import { ChevronLeft, ChevronRight, FileText, Image, Calendar as CalendarIcon, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, FileText, Image, Calendar as CalendarIcon, Sparkles, Star } from "lucide-react";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { getHolidayForDate } from "@/lib/holidays";
 
 type ViewType = "month" | "week" | "day";
 
@@ -218,6 +219,7 @@ export default function Calendar() {
         const dayEvents = getEventsForDay(currentDay);
         const isToday = isSameDay(currentDay, new Date());
         const isCurrentMonth = isSameMonth(currentDay, monthStart);
+        const holiday = getHolidayForDate(currentDay);
 
         days.push(
           <div
@@ -228,30 +230,53 @@ export default function Calendar() {
               hover:bg-accent/5
               ${!isCurrentMonth ? "bg-muted/20" : "bg-card/50"}
               ${isToday ? "bg-primary/5 ring-2 ring-primary/30 ring-inset" : ""}
+              ${holiday ? "bg-amber-500/5" : ""}
               animate-fade-in
             `}
             style={{ animationDelay: `${i * 20}ms` }}
           >
-            <div className={`
-              text-sm font-medium mb-2 w-7 h-7 flex items-center justify-center rounded-full
-              transition-all duration-300
-              ${isToday 
-                ? "bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/30 scale-110" 
-                : "hover:bg-accent/20"
-              }
-              ${!isCurrentMonth ? "text-muted-foreground/50" : "text-foreground"}
-            `}>
-              {format(currentDay, "d")}
+            <div className="flex items-center justify-between mb-2">
+              <div className={`
+                text-sm font-medium w-7 h-7 flex items-center justify-center rounded-full
+                transition-all duration-300
+                ${isToday 
+                  ? "bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/30 scale-110" 
+                  : "hover:bg-accent/20"
+                }
+                ${!isCurrentMonth ? "text-muted-foreground/50" : "text-foreground"}
+              `}>
+                {format(currentDay, "d")}
+              </div>
+              {holiday && (
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Star className={`h-3.5 w-3.5 ${holiday.type === 'federal' ? 'text-amber-500 fill-amber-500' : 'text-amber-400'}`} />
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="bg-card/95 backdrop-blur-sm">
+                    <p className="font-medium">{holiday.name}</p>
+                    <p className="text-xs text-muted-foreground capitalize">{holiday.type} holiday</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
-            <div className="space-y-1 overflow-hidden max-h-[80px]">
-              {dayEvents.slice(0, 3).map((event, idx) => (
+            {holiday && (
+              <div className={`text-xs px-1.5 py-0.5 rounded mb-1 truncate ${
+                holiday.type === 'federal' 
+                  ? 'bg-amber-500/20 text-amber-700 dark:text-amber-400 font-medium' 
+                  : 'bg-amber-400/10 text-amber-600 dark:text-amber-500'
+              }`}>
+                {holiday.name}
+              </div>
+            )}
+            <div className="space-y-1 overflow-hidden max-h-[60px]">
+              {dayEvents.slice(0, 2).map((event, idx) => (
                 <div key={event.id} style={{ animationDelay: `${idx * 50}ms` }}>
                   {renderEventChip(event)}
                 </div>
               ))}
-              {dayEvents.length > 3 && (
+              {dayEvents.length > 2 && (
                 <div className="text-xs text-muted-foreground px-2 py-0.5 bg-muted/50 rounded-md inline-block animate-fade-in">
-                  +{dayEvents.length - 3} more
+                  +{dayEvents.length - 2} more
                 </div>
               )}
             </div>
@@ -300,29 +325,40 @@ export default function Calendar() {
         {/* Header */}
         <div className="grid grid-cols-[70px_repeat(7,1fr)] bg-gradient-to-r from-muted/80 to-muted/60 backdrop-blur-sm">
           <div className="p-3 border-r border-border/30" />
-          {days.map((day, idx) => (
-            <div
-              key={day.toString()}
-              className={`
-                p-3 text-center border-r border-border/30 last:border-r-0
-                transition-all duration-300 animate-fade-in
-                ${isSameDay(day, new Date()) ? "bg-primary/10" : ""}
-              `}
-              style={{ animationDelay: `${idx * 40}ms` }}
-            >
-              <div className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{format(day, "EEE")}</div>
-              <div className={`
-                text-xl font-bold w-10 h-10 mx-auto flex items-center justify-center rounded-full mt-1
-                transition-all duration-300
-                ${isSameDay(day, new Date()) 
-                  ? "bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/30" 
-                  : "hover:bg-accent/20"
-                }
-              `}>
-                {format(day, "d")}
+          {days.map((day, idx) => {
+            const holiday = getHolidayForDate(day);
+            return (
+              <div
+                key={day.toString()}
+                className={`
+                  p-3 text-center border-r border-border/30 last:border-r-0
+                  transition-all duration-300 animate-fade-in
+                  ${isSameDay(day, new Date()) ? "bg-primary/10" : ""}
+                  ${holiday ? "bg-amber-500/5" : ""}
+                `}
+                style={{ animationDelay: `${idx * 40}ms` }}
+              >
+                <div className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{format(day, "EEE")}</div>
+                <div className={`
+                  text-xl font-bold w-10 h-10 mx-auto flex items-center justify-center rounded-full mt-1
+                  transition-all duration-300
+                  ${isSameDay(day, new Date()) 
+                    ? "bg-gradient-to-br from-primary to-accent text-primary-foreground shadow-lg shadow-primary/30" 
+                    : "hover:bg-accent/20"
+                  }
+                `}>
+                  {format(day, "d")}
+                </div>
+                {holiday && (
+                  <div className={`text-xs mt-1 truncate ${
+                    holiday.type === 'federal' ? 'text-amber-600 dark:text-amber-400 font-medium' : 'text-amber-500'
+                  }`}>
+                    {holiday.name}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         {/* Time grid */}
         <div className="max-h-[600px] overflow-y-auto scrollbar-thin">
@@ -356,11 +392,14 @@ export default function Calendar() {
   const renderDayView = () => {
     const hours = Array.from({ length: 24 }, (_, i) => i);
     const dayEvents = getEventsForDay(currentDate);
+    const holiday = getHolidayForDate(currentDate);
 
     return (
       <div className="rounded-xl border border-border/50 overflow-hidden shadow-xl bg-gradient-to-br from-card to-card/80">
         {/* Header */}
-        <div className="p-6 bg-gradient-to-r from-primary/10 via-accent/10 to-primary/10 text-center backdrop-blur-sm animate-fade-in">
+        <div className={`p-6 text-center backdrop-blur-sm animate-fade-in ${
+          holiday ? 'bg-gradient-to-r from-amber-500/10 via-amber-400/10 to-amber-500/10' : 'bg-gradient-to-r from-primary/10 via-accent/10 to-primary/10'
+        }`}>
           <div className="text-sm text-muted-foreground font-medium uppercase tracking-widest">{format(currentDate, "EEEE")}</div>
           <div className={`
             text-4xl font-bold w-16 h-16 mx-auto flex items-center justify-center rounded-full mt-2
@@ -373,6 +412,16 @@ export default function Calendar() {
             {format(currentDate, "d")}
           </div>
           <div className="text-sm text-muted-foreground mt-2 font-medium">{format(currentDate, "MMMM yyyy")}</div>
+          {holiday && (
+            <div className={`mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full ${
+              holiday.type === 'federal' 
+                ? 'bg-amber-500/20 text-amber-700 dark:text-amber-400' 
+                : 'bg-amber-400/15 text-amber-600 dark:text-amber-500'
+            }`}>
+              <Star className={`h-4 w-4 ${holiday.type === 'federal' ? 'fill-current' : ''}`} />
+              <span className="font-medium">{holiday.name}</span>
+            </div>
+          )}
         </div>
         {/* Time grid */}
         <div className="max-h-[500px] overflow-y-auto scrollbar-thin">
@@ -532,6 +581,10 @@ export default function Calendar() {
             <div className="flex items-center gap-2 animate-fade-in" style={{ animationDelay: '50ms' }}>
               <div className="w-3 h-3 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 shadow-sm shadow-purple-500/50" />
               <span className="font-medium text-muted-foreground">Stories</span>
+            </div>
+            <div className="flex items-center gap-2 animate-fade-in" style={{ animationDelay: '100ms' }}>
+              <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+              <span className="font-medium text-muted-foreground">Holidays</span>
             </div>
           </div>
         </div>
