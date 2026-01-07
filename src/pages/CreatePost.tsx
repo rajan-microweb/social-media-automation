@@ -881,15 +881,12 @@ export default function CreatePost() {
                   <h3 className="font-semibold">Instagram Fields</h3>
 
                   <div className="space-y-2">
-                    <Label htmlFor="instagramTags">
-                      Instagram Tags <span className="text-destructive">*</span>
-                    </Label>
+                    <Label htmlFor="instagramTags">Instagram Tags</Label>
                     <Input
                       id="instagramTags"
                       value={instagramTags}
                       onChange={(e) => setInstagramTags(e.target.value)}
                       placeholder="Enter username of Instagram profile to tag or mention..."
-                      required={showInstagramFields}
                     />
                   </div>
                 </div>
