@@ -11,7 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Sparkles, X, Plus, Loader2 } from "lucide-react";
+import { Sparkles, X, Plus, Loader2, AlertCircle } from "lucide-react";
+import { convertFileToJpeg, isJpegFile, convertToJpeg } from "@/lib/imageUtils";
 import { AiPromptModal } from "@/components/AiPromptModal";
 import {
   AlertDialog,
@@ -392,17 +393,50 @@ export default function CreatePost() {
     }
   };
 
+  // State for conversion progress
+  const [isConverting, setIsConverting] = useState(false);
+
   // Carousel-specific functions
-  const handleCarouselFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCarouselFilesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    const totalCount = carouselImages.length + carouselFiles.length + files.length;
-    
-    if (totalCount > 10) {
-      toast.error("Maximum 10 images allowed for carousel");
+    const remaining = 10 - getTotalCarouselCount();
+
+    if (files.length > remaining) {
+      toast.error(`You can only add ${remaining} more images`);
       return;
     }
-    
-    setCarouselFiles([...carouselFiles, ...files]);
+
+    // Check if Instagram carousel - need to convert non-JPEG files
+    const needsConversion = typeOfPost === "carousel" && platforms.includes("instagram");
+
+    if (needsConversion) {
+      setIsConverting(true);
+      const convertedFiles: File[] = [];
+
+      for (const file of files) {
+        if (isJpegFile(file)) {
+          convertedFiles.push(file);
+        } else {
+          toast.info(`Converting ${file.name} to JPEG...`);
+          try {
+            const jpegFile = await convertFileToJpeg(file);
+            convertedFiles.push(jpegFile);
+          } catch (error) {
+            console.error("Conversion error:", error);
+            toast.error(`Failed to convert ${file.name}`);
+            continue;
+          }
+        }
+      }
+
+      setCarouselFiles((prev) => [...prev, ...convertedFiles]);
+      setIsConverting(false);
+      if (convertedFiles.length > 0) {
+        toast.success(`${convertedFiles.length} image(s) added`);
+      }
+    } else {
+      setCarouselFiles((prev) => [...prev, ...files]);
+    }
   };
 
   const removeCarouselFile = (index: number) => {
@@ -454,7 +488,22 @@ export default function CreatePost() {
       const data = await response.json();
 
       if (data.imageUrl) {
-        setCarouselImages([...carouselImages, data.imageUrl]);
+        let finalUrl = data.imageUrl;
+
+        // Convert to JPEG if Instagram carousel
+        const needsConversion = typeOfPost === "carousel" && platforms.includes("instagram");
+        if (needsConversion) {
+          toast.info("Converting AI image to JPEG for Instagram...");
+          try {
+            const jpegBlob = await convertToJpeg(data.imageUrl);
+            finalUrl = URL.createObjectURL(jpegBlob);
+          } catch (convError) {
+            console.error("JPEG conversion error:", convError);
+            toast.warning("Could not convert to JPEG, using original format");
+          }
+        }
+
+        setCarouselImages([...carouselImages, finalUrl]);
         setCarouselAiPrompt(""); // Clear prompt after successful generation
         toast.success(`Image ${carouselImages.length + 1} generated successfully`);
       } else {
@@ -469,6 +518,9 @@ export default function CreatePost() {
   };
 
   const getTotalCarouselCount = () => carouselImages.length + carouselFiles.length;
+
+  // Check if Instagram carousel (requires JPEG only)
+  const isInstagramCarousel = typeOfPost === "carousel" && platforms.includes("instagram");
 
   // Field visibility logic
   const showTextContent = typeOfPost && typeOfPost !== "pdf";
@@ -955,17 +1007,33 @@ export default function CreatePost() {
                     </p>
                   </div>
 
+                  {/* Instagram JPEG Notice */}
+                  {isInstagramCarousel && (
+                    <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-sm">
+                      <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                      <span className="text-amber-700 dark:text-amber-300">
+                        Instagram carousels only support JPEG images. Other formats will be automatically converted.
+                      </span>
+                    </div>
+                  )}
+
                   {/* File Upload Section */}
                   <div className="space-y-2">
                     <Label htmlFor="carouselFiles">Or Upload Images from Device</Label>
                     <Input
                       id="carouselFiles"
                       type="file"
-                      accept="image/*"
+                      accept={isInstagramCarousel ? "image/jpeg,image/jpg" : "image/*"}
                       multiple
                       onChange={handleCarouselFilesChange}
-                      disabled={getTotalCarouselCount() >= 10}
+                      disabled={getTotalCarouselCount() >= 10 || isConverting}
                     />
+                    {isConverting && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Converting images to JPEG...
+                      </div>
+                    )}
                   </div>
 
                   {/* Preview Grid */}
