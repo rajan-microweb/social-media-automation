@@ -43,15 +43,11 @@ interface FacebookCredentials {
 }
 
 interface InstagramCredentials {
-  personal_info?: {
-    name: string;
-    avatar_url: string;
-    user_id: string;
-  };
   accounts?: Array<{
-    ig_business_id: string;
+    ig_id: string;
     ig_username: string;
-    ig_avatar?: string;
+    avatar_url?: string;
+    account_name?: string;
   }>;
   // Legacy format
   ig_business_id?: string;
@@ -174,13 +170,13 @@ export function usePlatformAccounts(userId: string | undefined, selectedPlatform
           // --- INSTAGRAM ---
           if (platformName === "instagram") {
             const creds = credentials as unknown as InstagramCredentials;
-            // Accounts array (new format) - use ig_business_id as the account identifier
+            // Accounts array - use ig_id as the account identifier
             if (Array.isArray(creds.accounts)) {
               creds.accounts.forEach(account => {
                 allAccounts.push({
-                  id: account.ig_business_id,
-                  name: `@${account.ig_username}`,
-                  avatar: account.ig_avatar || null,
+                  id: account.ig_id,
+                  name: account.account_name || `@${account.ig_username}`,
+                  avatar: account.avatar_url || null,
                   type: 'personal',
                   platform: 'instagram'
                 });
