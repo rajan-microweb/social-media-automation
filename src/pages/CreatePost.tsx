@@ -901,9 +901,7 @@ export default function CreatePost() {
                   <h3 className="font-semibold">Facebook Fields</h3>
 
                   <div className="space-y-2">
-                    <Label htmlFor="facebookTags">
-                      Facebook Tags <span className="text-destructive">*</span>
-                    </Label>
+                    <Label htmlFor="facebookTags">Facebook Tags</Label>
                     <Input
                       id="facebookTags"
                       value={facebookTags}

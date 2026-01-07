@@ -58,15 +58,15 @@ export default function EditPost() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
-  
+
   // Form state
   const [typeOfPost, setTypeOfPost] = useState("");
   const [platforms, setPlatforms] = useState<string[]>([]);
   const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
-  
+
   // Use the platform accounts hook
   const { accounts: platformAccounts, loading: loadingPlatformAccounts } = usePlatformAccounts(user?.id, platforms);
-  
+
   // Platform connection state
   const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
   const [showConnectionAlert, setShowConnectionAlert] = useState(false);
@@ -110,23 +110,23 @@ export default function EditPost() {
   useEffect(() => {
     const fetchConnectedPlatforms = async () => {
       if (!user) return;
-      
+
       const { data } = await supabase
         .from("platform_integrations")
         .select("platform_name, credentials")
         .eq("user_id", user.id);
-      
+
       if (data) {
-        const platformNames = data.map(p => p.platform_name);
+        const platformNames = data.map((p) => p.platform_name);
         setConnectedPlatforms(platformNames);
-        const openaiIntegration = data.find(p => p.platform_name.toLowerCase() === "openai");
+        const openaiIntegration = data.find((p) => p.platform_name.toLowerCase() === "openai");
         setOpenaiConnected(!!openaiIntegration);
-        if (openaiIntegration?.credentials && typeof openaiIntegration.credentials === 'object') {
+        if (openaiIntegration?.credentials && typeof openaiIntegration.credentials === "object") {
           setOpenaiApiKey((openaiIntegration.credentials as any).api_key || "");
         }
       }
     };
-    
+
     fetchConnectedPlatforms();
   }, [user]);
 
@@ -156,7 +156,7 @@ export default function EditPost() {
       setArticleDescription(data.description || "");
       setArticleUrl(data.url || "");
       setStatus(data.status);
-      
+
       // Convert UTC datetime to local timezone for datetime-local input
       if (data.scheduled_at) {
         const date = new Date(data.scheduled_at);
@@ -212,9 +212,7 @@ export default function EditPost() {
   // Reset selected accounts when platforms change (but preserve valid ones)
   useEffect(() => {
     // Filter out account IDs that no longer belong to selected platforms
-    const validAccountIds = selectedAccountIds.filter(id => 
-      platformAccounts.some(account => account.id === id)
-    );
+    const validAccountIds = selectedAccountIds.filter((id) => platformAccounts.some((account) => account.id === id));
     if (validAccountIds.length !== selectedAccountIds.length) {
       setSelectedAccountIds(validAccountIds);
     }
@@ -222,15 +220,15 @@ export default function EditPost() {
 
   const handlePlatformChange = (platform: string, checked: boolean) => {
     // Check if platform is connected before allowing selection (case-insensitive)
-    const isConnected = connectedPlatforms.some(p => p.toLowerCase() === platform.toLowerCase());
-    
+    const isConnected = connectedPlatforms.some((p) => p.toLowerCase() === platform.toLowerCase());
+
     if (checked && !isConnected) {
       setAlertMessage(`Please connect your ${platform} account first to select this platform.`);
       setAlertPlatform(platform);
       setShowConnectionAlert(true);
       return;
     }
-    
+
     if (checked) {
       setPlatforms([...platforms, platform.toLowerCase()]);
     } else {
@@ -286,19 +284,17 @@ export default function EditPost() {
   };
 
   const uploadFile = async (file: File, folder: string): Promise<string> => {
-    const fileExt = file.name.split('.').pop();
+    const fileExt = file.name.split(".").pop();
     const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
     const filePath = `${folder}/${fileName}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from('post-media')
-      .upload(filePath, file);
+    const { error: uploadError } = await supabase.storage.from("post-media").upload(filePath, file);
 
     if (uploadError) throw uploadError;
 
-    const { data: { publicUrl } } = supabase.storage
-      .from('post-media')
-      .getPublicUrl(filePath);
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("post-media").getPublicUrl(filePath);
 
     return publicUrl;
   };
@@ -312,7 +308,7 @@ export default function EditPost() {
       // Priority: AI URLs > new file upload > existing media
       let uploadedUrl = existingMediaUrl;
       let thumbnailUrl = existingThumbnailUrl;
-      
+
       // Check for AI-generated URLs first
       if (imageUrl || videoUrl || pdfUrl) {
         if (typeOfPost === "image" || typeOfPost === "carousel") {
@@ -332,7 +328,7 @@ export default function EditPost() {
         } else if (typeOfPost === "pdf") {
           folder = "pdfs";
         }
-        
+
         if (folder) {
           uploadedUrl = await uploadFile(mediaFile, folder);
         }
@@ -362,12 +358,9 @@ export default function EditPost() {
           typeOfPost === "image" || typeOfPost === "carousel"
             ? uploadedUrl || ""
             : typeOfPost === "article"
-            ? thumbnailUrl || ""
-            : "",
-        video:
-          typeOfPost === "video" || typeOfPost === "shorts"
-            ? uploadedUrl || ""
-            : "",
+              ? thumbnailUrl || ""
+              : "",
+        video: typeOfPost === "video" || typeOfPost === "shorts" ? uploadedUrl || "" : "",
         pdf: typeOfPost === "pdf" ? uploadedUrl || "" : "",
         title: articleTitle || "",
         description: articleDescription || undefined,
@@ -489,48 +482,48 @@ export default function EditPost() {
                     {availablePlatforms.map((platform) => {
                       const isSelected = platforms.includes(platform.toLowerCase());
                       const platformLower = platform.toLowerCase();
-                      
+
                       const getPlatformIcon = () => {
                         switch (platformLower) {
-                          case 'facebook':
+                          case "facebook":
                             return (
                               <svg viewBox="0 0 24 24" className="w-8 h-8" fill="#1877F2">
-                                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
                               </svg>
                             );
-                          case 'instagram':
+                          case "instagram":
                             return (
                               <svg viewBox="0 0 24 24" className="w-8 h-8">
                                 <defs>
                                   <linearGradient id="ig-gradient-edit" x1="0%" y1="100%" x2="100%" y2="0%">
-                                    <stop offset="0%" stopColor="#FFDC80"/>
-                                    <stop offset="10%" stopColor="#FCAF45"/>
-                                    <stop offset="30%" stopColor="#F77737"/>
-                                    <stop offset="60%" stopColor="#C13584"/>
-                                    <stop offset="100%" stopColor="#833AB4"/>
+                                    <stop offset="0%" stopColor="#FFDC80" />
+                                    <stop offset="10%" stopColor="#FCAF45" />
+                                    <stop offset="30%" stopColor="#F77737" />
+                                    <stop offset="60%" stopColor="#C13584" />
+                                    <stop offset="100%" stopColor="#833AB4" />
                                   </linearGradient>
                                 </defs>
-                                <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ig-gradient-edit)"/>
-                                <circle cx="12" cy="12" r="4" fill="none" stroke="white" strokeWidth="1.5"/>
-                                <circle cx="17.5" cy="6.5" r="1.5" fill="white"/>
+                                <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ig-gradient-edit)" />
+                                <circle cx="12" cy="12" r="4" fill="none" stroke="white" strokeWidth="1.5" />
+                                <circle cx="17.5" cy="6.5" r="1.5" fill="white" />
                               </svg>
                             );
-                          case 'linkedin':
+                          case "linkedin":
                             return (
                               <svg viewBox="0 0 24 24" className="w-8 h-8" fill="#0A66C2">
-                                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
+                                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
                               </svg>
                             );
-                          case 'youtube':
+                          case "youtube":
                             return (
                               <svg viewBox="0 0 24 24" className="w-8 h-8" fill="#FF0000">
-                                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
                               </svg>
                             );
-                          case 'twitter':
+                          case "twitter":
                             return (
                               <svg viewBox="0 0 24 24" className="w-8 h-8" fill="#000000">
-                                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                               </svg>
                             );
                           default:
@@ -545,8 +538,8 @@ export default function EditPost() {
                           onClick={() => handlePlatformChange(platform, !isSelected)}
                           className={`flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all min-w-[100px] ${
                             isSelected
-                              ? 'border-primary bg-primary/5 shadow-sm'
-                              : 'border-border hover:border-muted-foreground/50 bg-card'
+                              ? "border-primary bg-primary/5 shadow-sm"
+                              : "border-border hover:border-muted-foreground/50 bg-card"
                           }`}
                         >
                           {getPlatformIcon()}
@@ -633,9 +626,7 @@ export default function EditPost() {
                     maxLength={2000}
                     placeholder="Write your post text..."
                   />
-                  <div className="text-xs text-muted-foreground text-right">
-                    {textContent.length}/2000
-                  </div>
+                  <div className="text-xs text-muted-foreground text-right">{textContent.length}/2000</div>
                 </div>
               )}
 
@@ -643,7 +634,7 @@ export default function EditPost() {
               {showArticleFields && (
                 <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
                   <h3 className="font-semibold">Article Fields</h3>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="articleTitle">
                       Article Title <span className="text-destructive">*</span>
@@ -702,9 +693,9 @@ export default function EditPost() {
                     {existingThumbnailUrl && (
                       <div className="mb-2 p-3 bg-muted rounded-md">
                         <p className="text-sm text-muted-foreground">Current thumbnail:</p>
-                        <img 
-                          src={existingThumbnailUrl} 
-                          alt="Current thumbnail" 
+                        <img
+                          src={existingThumbnailUrl}
+                          alt="Current thumbnail"
                           className="mt-2 max-w-xs rounded-lg border"
                         />
                       </div>
@@ -722,15 +713,16 @@ export default function EditPost() {
                       }}
                     />
                     {articleThumbnailFile && (
-                      <p className="text-sm text-muted-foreground">
-                        New file selected: {articleThumbnailFile.name}
-                      </p>
+                      <p className="text-sm text-muted-foreground">New file selected: {articleThumbnailFile.name}</p>
                     )}
                     {(articleThumbnailFile || articleThumbnailUrl) && (
                       <div className="mt-2">
                         <p className="text-sm text-muted-foreground mb-2">Preview:</p>
                         <img
-                          src={articleThumbnailUrl || (articleThumbnailFile ? URL.createObjectURL(articleThumbnailFile) : "")}
+                          src={
+                            articleThumbnailUrl ||
+                            (articleThumbnailFile ? URL.createObjectURL(articleThumbnailFile) : "")
+                          }
                           alt="Article thumbnail preview"
                           className="max-w-xs rounded-lg border"
                         />
@@ -751,11 +743,16 @@ export default function EditPost() {
                       type="button"
                       variant="ghost"
                       size="sm"
-                      onClick={() => openAiModal(
-                        typeOfPost === "pdf" ? "pdf" : 
-                        (typeOfPost === "video" || typeOfPost === "shorts") ? "video" : "image",
-                        "media"
-                      )}
+                      onClick={() =>
+                        openAiModal(
+                          typeOfPost === "pdf"
+                            ? "pdf"
+                            : typeOfPost === "video" || typeOfPost === "shorts"
+                              ? "video"
+                              : "image",
+                          "media",
+                        )
+                      }
                       className="h-8 gap-1"
                     >
                       <Sparkles className="h-4 w-4" />
@@ -765,9 +762,9 @@ export default function EditPost() {
                   {existingMediaUrl && (
                     <div className="mb-2 p-3 bg-muted rounded-md">
                       <p className="text-sm text-muted-foreground">Current file:</p>
-                      <a 
-                        href={existingMediaUrl} 
-                        target="_blank" 
+                      <a
+                        href={existingMediaUrl}
+                        target="_blank"
                         rel="noopener noreferrer"
                         className="text-sm text-primary hover:underline break-all"
                       >
@@ -789,63 +786,49 @@ export default function EditPost() {
                       typeOfPost === "image" || typeOfPost === "carousel"
                         ? "image/*"
                         : typeOfPost === "video" || typeOfPost === "shorts"
-                        ? "video/*"
-                        : typeOfPost === "pdf"
-                        ? "application/pdf"
-                        : "*"
+                          ? "video/*"
+                          : typeOfPost === "pdf"
+                            ? "application/pdf"
+                            : "*"
                     }
                   />
-                  {mediaFile && (
-                    <p className="text-sm text-muted-foreground">
-                      New file selected: {mediaFile.name}
-                    </p>
-                  )}
-                  
+                  {mediaFile && <p className="text-sm text-muted-foreground">New file selected: {mediaFile.name}</p>}
+
                   {/* Media Preview */}
                   {(mediaFile || imageUrl || videoUrl || pdfUrl) && (
                     <div className="mt-3 p-3 border rounded-lg bg-muted/30">
                       <p className="text-sm font-medium mb-2">Preview:</p>
-                      
+
                       {/* Image Preview */}
                       {(typeOfPost === "image" || typeOfPost === "carousel") && (
                         <>
                           {mediaFile && (
-                            <img 
-                              src={URL.createObjectURL(mediaFile)} 
-                              alt="Preview" 
+                            <img
+                              src={URL.createObjectURL(mediaFile)}
+                              alt="Preview"
                               className="max-h-48 rounded-md object-contain"
                             />
                           )}
                           {imageUrl && (
-                            <img 
-                              src={imageUrl} 
-                              alt="AI Generated Preview" 
+                            <img
+                              src={imageUrl}
+                              alt="AI Generated Preview"
                               className="max-h-48 rounded-md object-contain"
                             />
                           )}
                         </>
                       )}
-                      
+
                       {/* Video Preview */}
                       {(typeOfPost === "video" || typeOfPost === "shorts") && (
                         <>
                           {mediaFile && (
-                            <video 
-                              src={URL.createObjectURL(mediaFile)} 
-                              controls 
-                              className="max-h-48 rounded-md"
-                            />
+                            <video src={URL.createObjectURL(mediaFile)} controls className="max-h-48 rounded-md" />
                           )}
-                          {videoUrl && (
-                            <video 
-                              src={videoUrl} 
-                              controls 
-                              className="max-h-48 rounded-md"
-                            />
-                          )}
+                          {videoUrl && <video src={videoUrl} controls className="max-h-48 rounded-md" />}
                         </>
                       )}
-                      
+
                       {/* PDF Preview */}
                       {typeOfPost === "pdf" && (
                         <>
@@ -854,9 +837,7 @@ export default function EditPost() {
                               <div className="text-2xl">📄</div>
                               <div>
                                 <p className="text-sm font-medium">{mediaFile.name}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  {(mediaFile.size / 1024).toFixed(2)} KB
-                                </p>
+                                <p className="text-xs text-muted-foreground">{(mediaFile.size / 1024).toFixed(2)} KB</p>
                               </div>
                             </div>
                           )}
@@ -865,9 +846,9 @@ export default function EditPost() {
                               <div className="text-2xl">📄</div>
                               <div>
                                 <p className="text-sm font-medium">AI Generated PDF</p>
-                                <a 
-                                  href={pdfUrl} 
-                                  target="_blank" 
+                                <a
+                                  href={pdfUrl}
+                                  target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-xs text-primary hover:underline"
                                 >
@@ -880,10 +861,8 @@ export default function EditPost() {
                       )}
                     </div>
                   )}
-                  {(typeOfPost === "video") && (platforms.includes("facebook") || platforms.includes("instagram")) && (
-                    <p className="text-sm text-blue-600">
-                      (In Facebook and Instagram, Video will be posted as Reel)
-                    </p>
+                  {typeOfPost === "video" && (platforms.includes("facebook") || platforms.includes("instagram")) && (
+                    <p className="text-sm text-blue-600">(In Facebook and Instagram, Video will be posted as Reel)</p>
                   )}
                 </div>
               )}
@@ -912,9 +891,7 @@ export default function EditPost() {
                     maxLength={2000}
                     placeholder="Write accompanying text for your PDF post..."
                   />
-                  <div className="text-xs text-muted-foreground text-right">
-                    {textContent.length}/2000
-                  </div>
+                  <div className="text-xs text-muted-foreground text-right">{textContent.length}/2000</div>
                 </div>
               )}
 
@@ -922,7 +899,7 @@ export default function EditPost() {
               {showYoutubeFields && (
                 <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
                   <h3 className="font-semibold">YouTube Fields</h3>
-                  
+
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="youtubeTitle">
@@ -980,7 +957,7 @@ export default function EditPost() {
               {showInstagramFields && (
                 <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
                   <h3 className="font-semibold">Instagram Fields</h3>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="instagramTags">
                       Instagram Tags <span className="text-destructive">*</span>
@@ -1000,17 +977,14 @@ export default function EditPost() {
               {showFacebookFields && (
                 <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
                   <h3 className="font-semibold">Facebook Fields</h3>
-                  
+
                   <div className="space-y-2">
-                    <Label htmlFor="facebookTags">
-                      Facebook Tags <span className="text-destructive">*</span>
-                    </Label>
+                    <Label htmlFor="facebookTags">Facebook Tags</Label>
                     <Input
                       id="facebookTags"
                       value={facebookTags}
                       onChange={(e) => setFacebookTags(e.target.value)}
                       placeholder="Enter URLs of Facebook Profile to tag or mention..."
-                      required={showFacebookFields}
                     />
                   </div>
                 </div>
@@ -1080,19 +1054,15 @@ export default function EditPost() {
           description: articleDescription,
         }}
       />
-      
+
       <AlertDialog open={showConnectionAlert} onOpenChange={setShowConnectionAlert}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Account Connection Required</AlertDialogTitle>
-            <AlertDialogDescription>
-              {alertMessage}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{alertMessage}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction onClick={() => navigate("/accounts")}>
-              Go to Accounts
-            </AlertDialogAction>
+            <AlertDialogAction onClick={() => navigate("/accounts")}>Go to Accounts</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1106,9 +1076,7 @@ export default function EditPost() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction onClick={() => navigate("/accounts")}>
-              Go to Accounts
-            </AlertDialogAction>
+            <AlertDialogAction onClick={() => navigate("/accounts")}>Go to Accounts</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
