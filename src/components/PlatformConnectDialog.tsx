@@ -282,6 +282,60 @@ const platformConfigs: Record<string, PlatformDocConfig> = {
     docUrl: "https://developer.x.com/en/docs/twitter-api",
     docLabel: "Twitter/X API Documentation",
   },
+  youtube: {
+    fields: [
+      { label: "Client ID", name: "clientId", placeholder: "Your Google/YouTube Client ID", required: true },
+      {
+        label: "Client Secret",
+        name: "clientSecret",
+        type: "password",
+        placeholder: "Your Google/YouTube Client Secret",
+        required: true,
+      },
+      { label: "Access Token", name: "accessToken", placeholder: "Your YouTube access token", required: true },
+      {
+        label: "Refresh Token",
+        name: "refreshToken",
+        type: "password",
+        placeholder: "Your YouTube refresh token",
+        required: true,
+      },
+    ],
+    steps: [
+      {
+        text: "Go to Google Cloud Console and create a new project or select an existing one",
+        link: "https://console.cloud.google.com/",
+        linkText: "Open Google Cloud Console",
+      },
+      {
+        text: "Enable the YouTube Data API v3: Go to 'APIs & Services' → 'Library' → Search for 'YouTube Data API v3' → Click 'Enable'",
+        link: "https://console.cloud.google.com/apis/library/youtube.googleapis.com",
+        linkText: "Enable YouTube API",
+      },
+      {
+        text: "Create OAuth credentials: Go to 'APIs & Services' → 'Credentials' → '+ Create Credentials' → 'OAuth client ID'",
+        link: "https://console.cloud.google.com/apis/credentials",
+        linkText: "Create Credentials",
+      },
+      {
+        text: "Configure OAuth consent screen if prompted: Add app name, user support email, and developer contact",
+      },
+      {
+        text: "Select 'Web application' as the application type. Add your n8n webhook URL as an Authorized redirect URI",
+      },
+      {
+        text: "Copy the Client ID and Client Secret after creation",
+      },
+      {
+        text: "Use n8n OAuth2 node to complete the authorization flow: Configure with Client ID, Client Secret, and scopes (youtube.upload, youtube.readonly)",
+      },
+      {
+        text: "After successful OAuth flow in n8n, copy the Access Token and Refresh Token from the n8n credential",
+      },
+    ],
+    docUrl: "https://developers.google.com/youtube/v3/getting-started",
+    docLabel: "YouTube Data API Docs",
+  },
   openai: {
     fields: [{ label: "API Key", name: "apiKey", type: "password", placeholder: "sk-...", required: true }],
     steps: [
