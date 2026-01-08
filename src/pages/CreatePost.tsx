@@ -37,11 +37,8 @@ const PLATFORM_MAP: Record<string, string[]> = {
   pdf: ["LinkedIn"],
 };
 
-// Metadata item schema for dynamic title/description fields
-const metadataItemSchema = z.object({
-  key: z.string(),
-  value: z.string(),
-});
+// Replace the old metadataItemSchema with this:
+const metadataSchema = z.record(z.string(), z.string()).optional();
 
 const postSchema = z.object({
   type_of_post: z.string().min(1, "Type of post is required"),
@@ -52,7 +49,7 @@ const postSchema = z.object({
   video: z.string().url().optional().or(z.literal("")),
   pdf: z.string().url().optional().or(z.literal("")),
   tags: z.array(z.string()).optional(),
-  metadata: z.array(metadataItemSchema).optional(),
+  metadata: metadataSchema
   status: z.enum(["draft", "scheduled", "published"]),
   scheduled_at: z.string().optional(),
 });
@@ -336,21 +333,21 @@ export default function CreatePost() {
         accountTypeValue = selectedAccountIds.join(",");
       }
 
-      // Build metadata array with platform+post-type specific fields
-      const metadataArray: { key: string; value: string }[] = [];
+    // Build metadata object with platform+post-type specific fields
+const metadataObject: Record<string, string> = {};
 
-      // Article + LinkedIn specific fields
-      if (typeOfPost === "article" && platforms.includes("linkedin")) {
-        if (articleTitle) metadataArray.push({ key: "articleTitle", value: articleTitle });
-        if (articleDescription) metadataArray.push({ key: "articleDescription", value: articleDescription });
-        if (articleUrl) metadataArray.push({ key: "articleUrl", value: articleUrl });
-      }
+// Article + LinkedIn specific fields
+if (type_of_post === "article" && platforms.includes("linkedin")) {
+  if (articleTitle) metadataObject["title"] = articleTitle;
+  if (articleDescription) metadataObject["description"] = articleDescription;
+  if (articleUrl) metadataObject["url"] = articleUrl;
+}
 
-      // Video + YouTube specific fields
-      if ((typeOfPost === "video" || typeOfPost === "shorts") && platforms.includes("youtube")) {
-        if (youtubeTitle) metadataArray.push({ key: "videoTitle", value: youtubeTitle });
-        if (youtubeDescription) metadataArray.push({ key: "videoDescription", value: youtubeDescription });
-      }
+// Video + YouTube specific fields
+if ((type_of_post === "video" || type_of_post === "shorts") && platforms.includes("youtube")) {
+  if (youtubeTitle) metadataObject["title"] = youtubeTitle;
+  if (youtubeDescription) metadataObject["description"] = youtubeDescription;
+}
 
       // Build tags array for platform-specific hashtags only
       const tagsArray: string[] = [];
@@ -379,7 +376,7 @@ export default function CreatePost() {
         video: typeOfPost === "video" || typeOfPost === "shorts" ? uploadedUrl || "" : "",
         pdf: typeOfPost === "pdf" ? uploadedUrl || "" : "",
         tags: tagsArray,
-        metadata: metadataArray,
+        metadata: Object.keys(data.metadata).length > 0 ? data.metadata : null, // Store as JSON object
         status: status,
         scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
       };
