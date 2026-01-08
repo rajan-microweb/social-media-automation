@@ -385,7 +385,7 @@ export default function CreatePost() {
 
       const { error } = await supabase.from("posts").insert({
         user_id: user!.id,
-        type_of_post: data.typeOfPost,
+        type_of_post: data.type_of_post,
         platforms: data.platforms,
         account_type: data.account_type ?? null,
         text: data.text ?? null,
