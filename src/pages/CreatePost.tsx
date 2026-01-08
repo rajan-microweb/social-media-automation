@@ -272,27 +272,27 @@ export default function CreatePost() {
       // Handle carousel separately - multiple images stored as comma-separated URLs
       if (typeOfPost === "carousel") {
         const allCarouselUrls: string[] = [...carouselImages]; // AI-generated URLs
-        
+
         // Upload any files that were selected
         for (const file of carouselFiles) {
           const url = await uploadFile(file, "images");
           allCarouselUrls.push(url);
         }
-        
+
         if (allCarouselUrls.length === 0) {
           toast.error("Please add at least one image for the carousel");
           setLoading(false);
           setUploading(false);
           return;
         }
-        
+
         if (allCarouselUrls.length > 10) {
           toast.error("Maximum 10 images allowed for carousel");
           setLoading(false);
           setUploading(false);
           return;
         }
-        
+
         uploadedUrl = allCarouselUrls.join(",");
       } else if (imageUrl || videoUrl || pdfUrl) {
         // Priority: AI URLs over file uploads for non-carousel
@@ -335,18 +335,19 @@ export default function CreatePost() {
 
       // Build tags array with platform+post-type specific fields
       const tagsArray: string[] = [];
+      const metadataArray: array[] = [];
 
       // Article + LinkedIn specific fields
       if (typeOfPost === "article" && platforms.includes("linkedin")) {
-        if (articleTitle) tagsArray.push(`article_title:${articleTitle}`);
-        if (articleDescription) tagsArray.push(`article_description:${articleDescription}`);
-        if (articleUrl) tagsArray.push(`article_url:${articleUrl}`);
+        if (articleTitle) metadataArray.push(`article_title:${articleTitle}`);
+        if (articleDescription) metadataArray.push(`article_description:${articleDescription}`);
+        if (articleUrl) metadataArray.push(`article_url:${articleUrl}`);
       }
 
       // Video + YouTube specific fields
       if ((typeOfPost === "video" || typeOfPost === "shorts") && platforms.includes("youtube")) {
-        if (youtubeTitle) tagsArray.push(`video_title:${youtubeTitle}`);
-        if (youtubeDescription) tagsArray.push(`video_description:${youtubeDescription}`);
+        if (youtubeTitle) metadataArray.push(`video_title:${youtubeTitle}`);
+        if (youtubeDescription) metadataArray.push(`video_description:${youtubeDescription}`);
       }
 
       // Instagram tags
@@ -549,7 +550,8 @@ export default function CreatePost() {
   const showTextContent = typeOfPost && typeOfPost !== "pdf";
   const showPdfTextContent = typeOfPost === "pdf";
   const showArticleFields = typeOfPost === "article";
-  const showMediaUpload = typeOfPost && typeOfPost !== "onlyText" && typeOfPost !== "article" && typeOfPost !== "carousel";
+  const showMediaUpload =
+    typeOfPost && typeOfPost !== "onlyText" && typeOfPost !== "article" && typeOfPost !== "carousel";
   const showCarouselUpload = typeOfPost === "carousel";
   const showYoutubeFields = platforms.includes("youtube") && typeOfPost === "video";
   const showInstagramFields = platforms.includes("instagram");
@@ -772,7 +774,7 @@ export default function CreatePost() {
                 <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
                   <h3 className="font-semibold">Article Fields</h3>
 
-              <div className="space-y-2">
+                  <div className="space-y-2">
                     <Label htmlFor="articleTitle">Article Title (Optional)</Label>
                     <Input
                       id="articleTitle"
@@ -1080,7 +1082,7 @@ export default function CreatePost() {
                             </div>
                           </div>
                         ))}
-                        
+
                         {/* Uploaded Files */}
                         {carouselFiles.map((file, index) => (
                           <div key={`file-${index}`} className="relative group">
