@@ -323,6 +323,80 @@ export default function Accounts() {
           }
         }
 
+        // --- HANDLE YOUTUBE ---
+        if (platformName === "youtube") {
+          // Personal/channel info from credentials
+          if (credentials.personal_info) {
+            accounts.push({
+              id: `yt-personal-${credentials.personal_info.user_id || credentials.personal_info.channel_id}`,
+              platform: config.name,
+              accountId: credentials.personal_info.user_id || credentials.personal_info.channel_id,
+              accountName: credentials.personal_info.name || credentials.personal_info.channel_name || "YouTube User",
+              accountType: "personal",
+              avatarUrl: credentials.personal_info.avatar_url || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+          // Multiple channels array
+          if (Array.isArray(credentials.channels)) {
+            credentials.channels.forEach((channel: any) => {
+              accounts.push({
+                id: `yt-channel-${channel.channel_id}`,
+                platform: config.name,
+                accountId: channel.channel_id,
+                accountName: channel.channel_name || "YouTube Channel",
+                accountType: "company",
+                avatarUrl: channel.avatar_url || null,
+                platformIcon: config.icon,
+                platformColor: config.color,
+              });
+            });
+          }
+          // Legacy/simple format - check if we have basic token info
+          if (!credentials.personal_info && !credentials.channels && (credentials.accessToken || credentials.clientId)) {
+            accounts.push({
+              id: `yt-${integration.id}`,
+              platform: config.name,
+              accountId: credentials.clientId || "youtube-account",
+              accountName: "YouTube Account",
+              accountType: "personal",
+              avatarUrl: null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+        }
+
+        // --- HANDLE TWITTER ---
+        if (platformName === "twitter") {
+          if (credentials.personal_info) {
+            accounts.push({
+              id: `twitter-${credentials.personal_info.user_id}`,
+              platform: config.name,
+              accountId: credentials.personal_info.user_id,
+              accountName: credentials.personal_info.name || `@${credentials.personal_info.username}`,
+              accountType: "personal",
+              avatarUrl: credentials.personal_info.avatar_url || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+          // Legacy/simple format
+          if (!credentials.personal_info && (credentials.accessToken || credentials.apiKey)) {
+            accounts.push({
+              id: `twitter-${integration.id}`,
+              platform: config.name,
+              accountId: "twitter-account",
+              accountName: "Twitter/X Account",
+              accountType: "personal",
+              avatarUrl: null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+        }
+
         // --- HANDLE LINKEDIN & OTHERS ---
         if (credentials.personal_info && platformName === "linkedin") {
           accounts.push({
@@ -810,10 +884,16 @@ export default function Accounts() {
                                     className={`mt-1 text-xs ${
                                       account.accountType === "personal"
                                         ? "bg-blue-500/10 text-blue-600"
-                                        : "bg-purple-500/10 text-purple-600"
+                                        : account.platform === "YouTube"
+                                          ? "bg-red-500/10 text-red-600"
+                                          : "bg-purple-500/10 text-purple-600"
                                     }`}
                                   >
-                                    {account.accountType === "personal" ? "Personal" : "Company"}
+                                    {account.accountType === "personal" 
+                                      ? "Personal" 
+                                      : account.platform === "YouTube" 
+                                        ? "Channel" 
+                                        : "Company"}
                                   </Badge>
                                 </div>
                               </div>
