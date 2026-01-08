@@ -376,7 +376,7 @@ export default function CreatePost() {
         video: typeOfPost === "video" || typeOfPost === "shorts" ? uploadedUrl || "" : "",
         pdf: typeOfPost === "pdf" ? uploadedUrl || "" : "",
         tags: tagsArray,
-        metadata: Object.keys(data.metadata).length > 0 ? data.metadata : null, // Store as JSON object
+        metadata: metadataObject, // Use the new object structure here
         status: status,
         scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
       };
@@ -396,7 +396,7 @@ export default function CreatePost() {
         description: null,
         url: null,
         tags: data.tags.length > 0 ? data.tags : null,
-        metadata: data.metadata.length > 0 ? data.metadata : null,
+        metadata: Object.keys(data.metadata).length > 0 ? data.metadata : null,
         status: data.status,
         scheduled_at: data.scheduled_at ?? null,
       });
