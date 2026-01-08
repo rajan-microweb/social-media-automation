@@ -50,7 +50,7 @@ const postSchema = z.object({
   description: z.string().optional(),
   url: z.string().url().optional().or(z.literal("")),
   tags: z.array(z.string()).optional(),
-  metadata: z.array(z.string()).optional(),
+  metadataArray: z.array(z.string()).optional(),
   status: z.enum(["draft", "scheduled", "published"]),
   scheduled_at: z.string().optional(),
 });
