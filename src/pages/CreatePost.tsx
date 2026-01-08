@@ -49,7 +49,7 @@ const postSchema = z.object({
   video: z.string().url().optional().or(z.literal("")),
   pdf: z.string().url().optional().or(z.literal("")),
   tags: z.array(z.string()).optional(),
-  metadata: metadataSchema
+  metadata: metadataSchema,
   status: z.enum(["draft", "scheduled", "published"]),
   scheduled_at: z.string().optional(),
 });
@@ -272,27 +272,27 @@ export default function CreatePost() {
       // Handle carousel separately - multiple images stored as comma-separated URLs
       if (typeOfPost === "carousel") {
         const allCarouselUrls: string[] = [...carouselImages]; // AI-generated URLs
-        
+
         // Upload any files that were selected
         for (const file of carouselFiles) {
           const url = await uploadFile(file, "images");
           allCarouselUrls.push(url);
         }
-        
+
         if (allCarouselUrls.length === 0) {
           toast.error("Please add at least one image for the carousel");
           setLoading(false);
           setUploading(false);
           return;
         }
-        
+
         if (allCarouselUrls.length > 10) {
           toast.error("Maximum 10 images allowed for carousel");
           setLoading(false);
           setUploading(false);
           return;
         }
-        
+
         uploadedUrl = allCarouselUrls.join(",");
       } else if (imageUrl || videoUrl || pdfUrl) {
         // Priority: AI URLs over file uploads for non-carousel
@@ -333,21 +333,21 @@ export default function CreatePost() {
         accountTypeValue = selectedAccountIds.join(",");
       }
 
-    // Build metadata object with platform+post-type specific fields
-const metadataObject: Record<string, string> = {};
+      // Build metadata object with platform+post-type specific fields
+      const metadataObject: Record<string, string> = {};
 
-// Article + LinkedIn specific fields
-if (type_of_post === "article" && platforms.includes("linkedin")) {
-  if (articleTitle) metadataObject["title"] = articleTitle;
-  if (articleDescription) metadataObject["description"] = articleDescription;
-  if (articleUrl) metadataObject["url"] = articleUrl;
-}
+      // Article + LinkedIn specific fields
+      if (type_of_post === "article" && platforms.includes("linkedin")) {
+        if (articleTitle) metadataObject["title"] = articleTitle;
+        if (articleDescription) metadataObject["description"] = articleDescription;
+        if (articleUrl) metadataObject["url"] = articleUrl;
+      }
 
-// Video + YouTube specific fields
-if ((type_of_post === "video" || type_of_post === "shorts") && platforms.includes("youtube")) {
-  if (youtubeTitle) metadataObject["title"] = youtubeTitle;
-  if (youtubeDescription) metadataObject["description"] = youtubeDescription;
-}
+      // Video + YouTube specific fields
+      if ((type_of_post === "video" || type_of_post === "shorts") && platforms.includes("youtube")) {
+        if (youtubeTitle) metadataObject["title"] = youtubeTitle;
+        if (youtubeDescription) metadataObject["description"] = youtubeDescription;
+      }
 
       // Build tags array for platform-specific hashtags only
       const tagsArray: string[] = [];
@@ -550,7 +550,8 @@ if ((type_of_post === "video" || type_of_post === "shorts") && platforms.include
   const showTextContent = typeOfPost && typeOfPost !== "pdf";
   const showPdfTextContent = typeOfPost === "pdf";
   const showArticleFields = typeOfPost === "article";
-  const showMediaUpload = typeOfPost && typeOfPost !== "onlyText" && typeOfPost !== "article" && typeOfPost !== "carousel";
+  const showMediaUpload =
+    typeOfPost && typeOfPost !== "onlyText" && typeOfPost !== "article" && typeOfPost !== "carousel";
   const showCarouselUpload = typeOfPost === "carousel";
   const showYoutubeFields = platforms.includes("youtube") && typeOfPost === "video";
   const showInstagramFields = platforms.includes("instagram");
@@ -773,7 +774,7 @@ if ((type_of_post === "video" || type_of_post === "shorts") && platforms.include
                 <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
                   <h3 className="font-semibold">Article Fields</h3>
 
-              <div className="space-y-2">
+                  <div className="space-y-2">
                     <Label htmlFor="articleTitle">Article Title (Optional)</Label>
                     <Input
                       id="articleTitle"
@@ -1081,7 +1082,7 @@ if ((type_of_post === "video" || type_of_post === "shorts") && platforms.include
                             </div>
                           </div>
                         ))}
-                        
+
                         {/* Uploaded Files */}
                         {carouselFiles.map((file, index) => (
                           <div key={`file-${index}`} className="relative group">
