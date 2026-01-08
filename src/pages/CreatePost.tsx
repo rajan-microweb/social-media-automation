@@ -45,8 +45,9 @@ const postSchema = z.object({
   image: z.string().url().optional().or(z.literal("")),
   video: z.string().url().optional().or(z.literal("")),
   pdf: z.string().url().optional().or(z.literal("")),
+  // All title/description fields are optional - platform-specific data stored in tags
   title: z.string().optional(),
-  description: z.string().max(2000).optional(),
+  description: z.string().optional(),
   url: z.string().url().optional().or(z.literal("")),
   tags: z.array(z.string()).optional(),
   status: z.enum(["draft", "scheduled", "published"]),
@@ -332,6 +333,32 @@ export default function CreatePost() {
         accountTypeValue = selectedAccountIds.join(",");
       }
 
+      // Build tags array with platform+post-type specific fields
+      const tagsArray: string[] = [];
+
+      // Article + LinkedIn specific fields
+      if (typeOfPost === "article" && platforms.includes("linkedin")) {
+        if (articleTitle) tagsArray.push(`article_title:${articleTitle}`);
+        if (articleDescription) tagsArray.push(`article_description:${articleDescription}`);
+        if (articleUrl) tagsArray.push(`article_url:${articleUrl}`);
+      }
+
+      // Video + YouTube specific fields
+      if ((typeOfPost === "video" || typeOfPost === "shorts") && platforms.includes("youtube")) {
+        if (youtubeTitle) tagsArray.push(`video_title:${youtubeTitle}`);
+        if (youtubeDescription) tagsArray.push(`video_description:${youtubeDescription}`);
+      }
+
+      // Instagram tags
+      if (platforms.includes("instagram") && instagramTags) {
+        tagsArray.push(`instagram_tags:${instagramTags}`);
+      }
+
+      // Facebook tags
+      if (platforms.includes("facebook") && facebookTags) {
+        tagsArray.push(`facebook_tags:${facebookTags}`);
+      }
+
       const data = {
         type_of_post: typeOfPost,
         platforms: platforms,
@@ -345,15 +372,11 @@ export default function CreatePost() {
               : "",
         video: typeOfPost === "video" || typeOfPost === "shorts" ? uploadedUrl || "" : "",
         pdf: typeOfPost === "pdf" ? uploadedUrl || "" : "",
-        title: articleTitle || "",
-        description: articleDescription || undefined,
-        url: articleUrl || undefined,
-        tags: [
-          youtubeTitle ? `youtube_title:${youtubeTitle}` : "",
-          youtubeDescription ? `youtube_description:${youtubeDescription}` : "",
-          instagramTags ? `instagram_tags:${instagramTags}` : "",
-          facebookTags ? `facebook_tags:${facebookTags}` : "",
-        ].filter(Boolean),
+        // Title and description are now optional and not populated from article fields
+        title: undefined,
+        description: undefined,
+        url: undefined,
+        tags: tagsArray,
         status: status,
         scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
       };
@@ -369,9 +392,9 @@ export default function CreatePost() {
         image: data.image || null,
         video: data.video || null,
         pdf: data.pdf || null,
-        title: data.title ?? "",
+        title: "", // Required field, send empty string
         description: data.description ?? null,
-        url: data.url || null,
+        url: data.url ?? null,
         tags: data.tags.length > 0 ? data.tags : null,
         status: data.status,
         scheduled_at: data.scheduled_at ?? null,
@@ -749,44 +772,35 @@ export default function CreatePost() {
                 <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
                   <h3 className="font-semibold">Article Fields</h3>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="articleTitle">
-                      Article Title <span className="text-destructive">*</span>
-                    </Label>
+              <div className="space-y-2">
+                    <Label htmlFor="articleTitle">Article Title (Optional)</Label>
                     <Input
                       id="articleTitle"
                       value={articleTitle}
                       onChange={(e) => setArticleTitle(e.target.value)}
                       placeholder="Enter title..."
-                      required={showArticleFields}
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="articleDescription">
-                      Article Description <span className="text-destructive">*</span>
-                    </Label>
+                    <Label htmlFor="articleDescription">Article Description (Optional)</Label>
                     <Textarea
                       id="articleDescription"
                       value={articleDescription}
                       onChange={(e) => setArticleDescription(e.target.value)}
                       rows={3}
                       placeholder="Enter description..."
-                      required={showArticleFields}
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="articleUrl">
-                      Article URL <span className="text-destructive">*</span>
-                    </Label>
+                    <Label htmlFor="articleUrl">Article URL (Optional)</Label>
                     <Input
                       id="articleUrl"
                       type="url"
                       value={articleUrl}
                       onChange={(e) => setArticleUrl(e.target.value)}
                       placeholder="https://..."
-                      required={showArticleFields}
                     />
                   </div>
 
@@ -1135,9 +1149,7 @@ export default function CreatePost() {
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="youtubeTitle">
-                        Video Title <span className="text-destructive">*</span>
-                      </Label>
+                      <Label htmlFor="youtubeTitle">Video Title (Optional)</Label>
                       <Button
                         type="button"
                         variant="ghost"
@@ -1154,15 +1166,12 @@ export default function CreatePost() {
                       value={youtubeTitle}
                       onChange={(e) => setYoutubeTitle(e.target.value)}
                       placeholder="Enter video title..."
-                      required={showYoutubeFields}
                     />
                   </div>
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="youtubeDescription">
-                        Video Description <span className="text-destructive">*</span>
-                      </Label>
+                      <Label htmlFor="youtubeDescription">Video Description (Optional)</Label>
                       <Button
                         type="button"
                         variant="ghost"
@@ -1180,7 +1189,6 @@ export default function CreatePost() {
                       onChange={(e) => setYoutubeDescription(e.target.value)}
                       rows={3}
                       placeholder="Enter video description..."
-                      required={showYoutubeFields}
                     />
                   </div>
                 </div>
