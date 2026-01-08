@@ -379,7 +379,7 @@ export default function CreatePost() {
         description: undefined,
         url: undefined,
         tags: tagsArray,
-        metadata: metadata,
+        metadata: metadataArray,
         status: status,
         scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
       };
