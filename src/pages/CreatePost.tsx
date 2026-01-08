@@ -335,7 +335,7 @@ export default function CreatePost() {
 
       // Build tags array with platform+post-type specific fields
       const tagsArray: string[] = [];
-      const metadataArray: array[] = [];
+      const metadataArray: Array[] = [];
 
       // Article + LinkedIn specific fields
       if (typeOfPost === "article" && platforms.includes("linkedin")) {
