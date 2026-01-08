@@ -399,6 +399,7 @@ export default function CreatePost() {
         description: data.description ?? null,
         url: data.url ?? null,
         tags: data.tags.length > 0 ? data.tags : null,
+        metadata: data.metadataArray.length > 0 ? data.metadataArray : null,
         status: data.status,
         scheduled_at: data.scheduled_at ?? null,
       });
