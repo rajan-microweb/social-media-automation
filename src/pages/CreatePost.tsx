@@ -337,14 +337,14 @@ export default function CreatePost() {
       const metadataObject: Record<string, string> = {};
 
       // Article + LinkedIn specific fields
-      if (type_of_post === "article" && platforms.includes("linkedin")) {
+      if (typeOfPost === "article" && platforms.includes("linkedin")) {
         if (articleTitle) metadataObject["title"] = articleTitle;
         if (articleDescription) metadataObject["description"] = articleDescription;
         if (articleUrl) metadataObject["url"] = articleUrl;
       }
 
       // Video + YouTube specific fields
-      if ((type_of_post === "video" || type_of_post === "shorts") && platforms.includes("youtube")) {
+      if ((typeOfPost === "video" || typeOfPost === "shorts") && platforms.includes("youtube")) {
         if (youtubeTitle) metadataObject["title"] = youtubeTitle;
         if (youtubeDescription) metadataObject["description"] = youtubeDescription;
       }
@@ -385,7 +385,7 @@ export default function CreatePost() {
 
       const { error } = await supabase.from("posts").insert({
         user_id: user!.id,
-        type_of_post: data.type_of_post,
+        type_of_post: data.typeOfPost,
         platforms: data.platforms,
         account_type: data.account_type ?? null,
         text: data.text ?? null,
