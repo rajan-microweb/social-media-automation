@@ -54,6 +54,7 @@ export type Database = {
           description: string | null
           id: string
           image: string | null
+          metadata: Json | null
           pdf: string | null
           platforms: string[] | null
           scheduled_at: string | null
@@ -73,6 +74,7 @@ export type Database = {
           description?: string | null
           id?: string
           image?: string | null
+          metadata?: Json | null
           pdf?: string | null
           platforms?: string[] | null
           scheduled_at?: string | null
@@ -92,6 +94,7 @@ export type Database = {
           description?: string | null
           id?: string
           image?: string | null
+          metadata?: Json | null
           pdf?: string | null
           platforms?: string[] | null
           scheduled_at?: string | null

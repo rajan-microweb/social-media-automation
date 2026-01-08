@@ -37,6 +37,12 @@ const PLATFORM_MAP: Record<string, string[]> = {
   pdf: ["LinkedIn"],
 };
 
+// Metadata item schema for dynamic title/description fields
+const metadataItemSchema = z.object({
+  key: z.string(),
+  value: z.string(),
+});
+
 const postSchema = z.object({
   type_of_post: z.string().min(1, "Type of post is required"),
   platforms: z.array(z.string()).min(1, "At least one platform is required"),
@@ -45,11 +51,8 @@ const postSchema = z.object({
   image: z.string().url().optional().or(z.literal("")),
   video: z.string().url().optional().or(z.literal("")),
   pdf: z.string().url().optional().or(z.literal("")),
-  // All title/description fields are optional - platform-specific data stored in tags
-  title: z.string().optional(),
-  description: z.string().optional(),
-  url: z.string().url().optional().or(z.literal("")),
   tags: z.array(z.string()).optional(),
+  metadata: z.array(metadataItemSchema).optional(),
   status: z.enum(["draft", "scheduled", "published"]),
   scheduled_at: z.string().optional(),
 });
@@ -333,21 +336,24 @@ export default function CreatePost() {
         accountTypeValue = selectedAccountIds.join(",");
       }
 
-      // Build tags array with platform+post-type specific fields
-      const tagsArray: string[] = [];
+      // Build metadata array with platform+post-type specific fields
+      const metadataArray: { key: string; value: string }[] = [];
 
       // Article + LinkedIn specific fields
       if (typeOfPost === "article" && platforms.includes("linkedin")) {
-        if (articleTitle) tagsArray.push(`article_title:${articleTitle}`);
-        if (articleDescription) tagsArray.push(`article_description:${articleDescription}`);
-        if (articleUrl) tagsArray.push(`article_url:${articleUrl}`);
+        if (articleTitle) metadataArray.push({ key: "articleTitle", value: articleTitle });
+        if (articleDescription) metadataArray.push({ key: "articleDescription", value: articleDescription });
+        if (articleUrl) metadataArray.push({ key: "articleUrl", value: articleUrl });
       }
 
       // Video + YouTube specific fields
       if ((typeOfPost === "video" || typeOfPost === "shorts") && platforms.includes("youtube")) {
-        if (youtubeTitle) tagsArray.push(`video_title:${youtubeTitle}`);
-        if (youtubeDescription) tagsArray.push(`video_description:${youtubeDescription}`);
+        if (youtubeTitle) metadataArray.push({ key: "videoTitle", value: youtubeTitle });
+        if (youtubeDescription) metadataArray.push({ key: "videoDescription", value: youtubeDescription });
       }
+
+      // Build tags array for platform-specific hashtags only
+      const tagsArray: string[] = [];
 
       // Instagram tags
       if (platforms.includes("instagram") && instagramTags) {
@@ -372,11 +378,8 @@ export default function CreatePost() {
               : "",
         video: typeOfPost === "video" || typeOfPost === "shorts" ? uploadedUrl || "" : "",
         pdf: typeOfPost === "pdf" ? uploadedUrl || "" : "",
-        // Title and description are now optional and not populated from article fields
-        title: undefined,
-        description: undefined,
-        url: undefined,
         tags: tagsArray,
+        metadata: metadataArray,
         status: status,
         scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
       };
@@ -392,10 +395,11 @@ export default function CreatePost() {
         image: data.image || null,
         video: data.video || null,
         pdf: data.pdf || null,
-        title: "", // Required field, send empty string
-        description: data.description ?? null,
-        url: data.url ?? null,
+        title: "",
+        description: null,
+        url: null,
         tags: data.tags.length > 0 ? data.tags : null,
+        metadata: data.metadata.length > 0 ? data.metadata : null,
         status: data.status,
         scheduled_at: data.scheduled_at ?? null,
       });
