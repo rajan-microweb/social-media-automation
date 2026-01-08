@@ -60,12 +60,17 @@ interface YouTubeCredentials {
     name: string;
     avatar_url: string;
     user_id: string;
+    channel_id?: string;
+    channel_name?: string;
   };
   channels?: Array<{
     channel_id: string;
     channel_name: string;
     avatar_url?: string;
   }>;
+  // Legacy format
+  accessToken?: string;
+  clientId?: string;
 }
 
 interface TwitterCredentials {
@@ -200,9 +205,9 @@ export function usePlatformAccounts(userId: string | undefined, selectedPlatform
             // Personal account
             if (creds.personal_info) {
               allAccounts.push({
-                id: creds.personal_info.user_id,
-                name: creds.personal_info.name,
-                avatar: creds.personal_info.avatar_url,
+                id: creds.personal_info.user_id || creds.personal_info.channel_id || 'yt-personal',
+                name: creds.personal_info.name || creds.personal_info.channel_name || 'YouTube Account',
+                avatar: creds.personal_info.avatar_url || null,
                 type: 'personal',
                 platform: 'youtube'
               });
@@ -217,6 +222,16 @@ export function usePlatformAccounts(userId: string | undefined, selectedPlatform
                   type: 'channel',
                   platform: 'youtube'
                 });
+              });
+            }
+            // Legacy format - just tokens stored
+            if (!creds.personal_info && !creds.channels && (creds.accessToken || creds.clientId)) {
+              allAccounts.push({
+                id: creds.clientId || 'youtube-legacy',
+                name: 'YouTube Account',
+                avatar: null,
+                type: 'channel',
+                platform: 'youtube'
               });
             }
           }
