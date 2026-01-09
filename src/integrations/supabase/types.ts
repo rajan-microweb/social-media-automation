@@ -144,6 +144,7 @@ export type Database = {
       }
       stories: {
         Row: {
+          account_type: string | null
           created_at: string
           description: string | null
           id: string
@@ -159,6 +160,7 @@ export type Database = {
           video: string | null
         }
         Insert: {
+          account_type?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -174,6 +176,7 @@ export type Database = {
           video?: string | null
         }
         Update: {
+          account_type?: string | null
           created_at?: string
           description?: string | null
           id?: string

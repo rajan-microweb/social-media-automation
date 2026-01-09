@@ -37,6 +37,7 @@ const updateStorySchema = z.object({
   scheduled_at: z.string().datetime().nullable().optional(),
   type_of_story: z.string().max(100).nullable().optional(),
   platforms: z.array(z.string().max(50)).nullable().optional(),
+  account_type: z.string().max(2000).nullable().optional(),
   image: z.string().max(2000).nullable().optional(),
   video: z.string().max(2000).nullable().optional(),
 }).strict();

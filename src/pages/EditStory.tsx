@@ -33,6 +33,7 @@ const PLATFORM_MAP: Record<string, string[]> = {
 const storySchema = z.object({
   type_of_story: z.string().min(1, "Type of story is required"),
   platforms: z.array(z.string()).min(1, "At least one platform is required"),
+  account_type: z.string().optional(),
   text: z.string().optional(),
   image: z.string().url().optional().or(z.literal("")),
   video: z.string().url().optional().or(z.literal("")),
@@ -131,6 +132,11 @@ export default function EditStory() {
         setStatus(data.status || "draft");
         if (data.image) setExistingMediaUrl(data.image);
         if (data.video) setExistingMediaUrl(data.video);
+        
+        // Load account_type (selected account IDs)
+        if (data.account_type) {
+          setSelectedAccountIds(data.account_type.split(",").filter(Boolean));
+        }
         
         // Convert UTC datetime to local timezone for datetime-local input
         if (data.scheduled_at) {
@@ -268,9 +274,16 @@ export default function EditStory() {
         ? new Date(scheduledAt).toISOString() 
         : undefined;
 
+      // Build account_type string from selected accounts
+      let accountTypeValue = "";
+      if (selectedAccountIds.length > 0) {
+        accountTypeValue = selectedAccountIds.join(",");
+      }
+
       const storyData = {
         type_of_story: typeOfStory,
         platforms,
+        account_type: accountTypeValue || undefined,
         text: text || undefined,
         image: typeOfStory === "image" ? uploadedImageUrl || "" : "",
         video: typeOfStory === "video" ? uploadedVideoUrl || "" : "",
@@ -286,6 +299,7 @@ export default function EditStory() {
           story_id: id,
           type_of_story: storyData.type_of_story,
           platforms: storyData.platforms,
+          account_type: storyData.account_type ?? null,
           text: storyData.text ?? null,
           image: storyData.image || null,
           video: storyData.video || null,

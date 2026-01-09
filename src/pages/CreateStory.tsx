@@ -33,6 +33,7 @@ const PLATFORM_MAP: Record<string, string[]> = {
 const storySchema = z.object({
   type_of_story: z.string().min(1, "Type of story is required"),
   platforms: z.array(z.string()).min(1, "At least one platform is required"),
+  account_type: z.string().optional(),
   text: z.string().optional(),
   image: z.string().url().optional().or(z.literal("")),
   video: z.string().url().optional().or(z.literal("")),
@@ -229,13 +230,19 @@ export default function CreateStory() {
         accountTypeValue = selectedAccountIds.join(",");
       }
 
+      // Convert datetime-local format to ISO 8601
+      const formattedScheduledAt = scheduledAt 
+        ? new Date(scheduledAt).toISOString() 
+        : undefined;
+
       const storyData = {
         type_of_story: typeOfStory,
         platforms,
+        account_type: accountTypeValue || undefined,
         text: text || undefined,
         image: uploadedImageUrl || "",
         video: uploadedVideoUrl || "",
-        scheduled_at: scheduledAt || undefined,
+        scheduled_at: formattedScheduledAt,
         status: status as "draft" | "scheduled" | "published",
       };
 
@@ -246,6 +253,7 @@ export default function CreateStory() {
         title: "",
         type_of_story: storyData.type_of_story,
         platforms: storyData.platforms,
+        account_type: storyData.account_type ?? null,
         text: storyData.text ?? null,
         image: storyData.image || null,
         video: storyData.video || null,
