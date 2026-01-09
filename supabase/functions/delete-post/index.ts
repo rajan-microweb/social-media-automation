@@ -36,7 +36,6 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 
     // Check for API key auth first (for external integrations like n8n)
     const apiKey = req.headers.get('x-api-key');
@@ -51,12 +50,13 @@ Deno.serve(async (req) => {
       isApiKeyAuth = true;
       console.log('Authenticated via API key');
     } else if (authHeader?.startsWith('Bearer ')) {
-      // JWT authentication (frontend)
-      const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
-        global: { headers: { Authorization: authHeader } }
+      // JWT authentication (frontend) - use service role to verify user
+      const token = authHeader.replace('Bearer ', '');
+      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
       });
       
-      const { data: { user }, error: userError } = await supabaseAuth.auth.getUser();
+      const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
       
       if (userError || !user) {
         console.error('JWT validation failed:', userError);
@@ -86,7 +86,9 @@ Deno.serve(async (req) => {
     }
 
     // Create service client for database operations
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
 
     const body = await req.json();
     const { post_id, user_id: bodyUserId } = body;
