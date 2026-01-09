@@ -263,13 +263,18 @@ export default function EditStory() {
         setUploading(false);
       }
 
+      // Convert datetime-local format to ISO 8601
+      const formattedScheduledAt = scheduledAt 
+        ? new Date(scheduledAt).toISOString() 
+        : undefined;
+
       const storyData = {
         type_of_story: typeOfStory,
         platforms,
         text: text || undefined,
         image: typeOfStory === "image" ? uploadedImageUrl || "" : "",
         video: typeOfStory === "video" ? uploadedVideoUrl || "" : "",
-        scheduled_at: scheduledAt || undefined,
+        scheduled_at: formattedScheduledAt,
         status: status as "draft" | "scheduled" | "published",
       };
 
