@@ -123,18 +123,27 @@ Deno.serve(async (req) => {
 
     console.log('Deleting story:', story_id, 'for user:', targetUserId);
 
-    // Verify ownership
+    // Verify ownership - use maybeSingle to handle already-deleted stories gracefully
     const { data: story, error: fetchError } = await supabase
       .from('stories')
       .select('user_id')
       .eq('id', story_id)
-      .single();
+      .maybeSingle();
 
-    if (fetchError || !story) {
-      console.error('Story not found:', fetchError);
+    if (fetchError) {
+      console.error('Error fetching story:', fetchError);
       return new Response(
-        JSON.stringify({ error: 'Story not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Error fetching story' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // If story doesn't exist, treat as success (idempotent delete)
+    if (!story) {
+      console.log('Story already deleted or not found:', story_id);
+      return new Response(
+        JSON.stringify({ success: true, message: 'Story deleted successfully' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
