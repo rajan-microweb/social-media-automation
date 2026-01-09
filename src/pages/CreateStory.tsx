@@ -9,7 +9,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { Loader2, Sparkles } from "lucide-react";
 import { z } from "zod";
@@ -23,6 +22,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { usePlatformAccounts } from "@/hooks/usePlatformAccounts";
+import { PlatformAccountSelector } from "@/components/posts/PlatformAccountSelector";
 
 const PLATFORM_MAP: Record<string, string[]> = {
   image: ["Facebook", "Instagram"],
@@ -36,6 +37,7 @@ const storySchema = z.object({
   image: z.string().url().optional().or(z.literal("")),
   video: z.string().url().optional().or(z.literal("")),
   scheduled_at: z.string().optional(),
+  status: z.enum(["draft", "scheduled", "published"]),
 });
 
 export default function CreateStory() {
@@ -46,10 +48,15 @@ export default function CreateStory() {
 
   const [typeOfStory, setTypeOfStory] = useState("");
   const [platforms, setPlatforms] = useState<string[]>([]);
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
   const [text, setText] = useState("");
   const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [status, setStatus] = useState("draft");
   const [scheduledAt, setScheduledAt] = useState("");
   const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
+
+  // Use the platform accounts hook
+  const { accounts: platformAccounts, loading: loadingPlatformAccounts } = usePlatformAccounts(user?.id, platforms);
 
   // AI Modal state
   const [aiModalOpen, setAiModalOpen] = useState(false);
@@ -100,11 +107,21 @@ export default function CreateStory() {
       const newPlatforms = PLATFORM_MAP[typeOfStory] || [];
       setAvailablePlatforms(newPlatforms);
       setPlatforms([]);
+      setSelectedAccountIds([]);
     }
   }, [typeOfStory]);
 
+  // Reset selected accounts when platforms change
+  useEffect(() => {
+    const validAccountIds = selectedAccountIds.filter((id) => 
+      platformAccounts.some((account) => account.id === id)
+    );
+    if (validAccountIds.length !== selectedAccountIds.length) {
+      setSelectedAccountIds(validAccountIds);
+    }
+  }, [platforms, platformAccounts]);
+
   const handlePlatformChange = (platform: string, checked: boolean) => {
-    // Check if platform is connected before allowing selection (case-insensitive)
     const isConnected = connectedPlatforms.some(p => p.toLowerCase() === platform.toLowerCase());
     
     if (checked && !isConnected) {
@@ -114,9 +131,19 @@ export default function CreateStory() {
       return;
     }
     
-    setPlatforms(prev =>
-      checked ? [...prev, platform] : prev.filter(p => p !== platform)
-    );
+    if (checked) {
+      setPlatforms([...platforms, platform.toLowerCase()]);
+    } else {
+      setPlatforms(platforms.filter(p => p !== platform.toLowerCase()));
+    }
+  };
+
+  const handleAccountToggle = (accountId: string) => {
+    if (selectedAccountIds.includes(accountId)) {
+      setSelectedAccountIds(selectedAccountIds.filter((id) => id !== accountId));
+    } else {
+      setSelectedAccountIds([...selectedAccountIds, accountId]);
+    }
   };
 
   const openAiModal = (field: "text" | "image" | "video", target: string) => {
@@ -164,7 +191,6 @@ export default function CreateStory() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Check if any platform is connected
     if (connectedPlatforms.length === 0) {
       setAlertMessage("Please connect at least one social media account before creating a story.");
       setAlertPlatform("");
@@ -178,7 +204,6 @@ export default function CreateStory() {
       let uploadedImageUrl = "";
       let uploadedVideoUrl = "";
 
-      // Priority: AI URLs over file uploads
       if (imageUrl || videoUrl) {
         if (typeOfStory === "image") {
           uploadedImageUrl = imageUrl;
@@ -198,6 +223,12 @@ export default function CreateStory() {
         setUploading(false);
       }
 
+      // Build account_type string from selected accounts
+      let accountTypeValue = "";
+      if (selectedAccountIds.length > 0) {
+        accountTypeValue = selectedAccountIds.join(",");
+      }
+
       const storyData = {
         type_of_story: typeOfStory,
         platforms,
@@ -205,7 +236,7 @@ export default function CreateStory() {
         image: uploadedImageUrl || "",
         video: uploadedVideoUrl || "",
         scheduled_at: scheduledAt || undefined,
-        status: scheduledAt ? "scheduled" : "draft",
+        status: status as "draft" | "scheduled" | "published",
       };
 
       storySchema.parse(storyData);
@@ -235,7 +266,11 @@ export default function CreateStory() {
     }
   };
 
+  // Field visibility logic
   const showMediaUpload = typeOfStory && typeOfStory !== "";
+  const showTextContent = typeOfStory !== "";
+  const showAccountSelectors = platforms.length > 0;
+  const showSchedule = typeOfStory !== "";
 
   const getMediaLabel = () => {
     if (typeOfStory === "image") return "Upload Image";
@@ -259,7 +294,9 @@ export default function CreateStory() {
             <form onSubmit={handleSubmit} className="space-y-6">
 
               <div className="space-y-2">
-                <Label htmlFor="typeOfStory">Type of Story *</Label>
+                <Label htmlFor="typeOfStory">
+                  Type of Story <span className="text-destructive">*</span>
+                </Label>
                 <Select value={typeOfStory} onValueChange={setTypeOfStory}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select type" />
@@ -271,12 +308,15 @@ export default function CreateStory() {
                 </Select>
               </div>
 
-              {availablePlatforms.length > 0 && (
+              {/* Platforms - Show when type is selected */}
+              {typeOfStory && availablePlatforms.length > 0 && (
                 <div className="space-y-2">
-                  <Label>Platforms *</Label>
+                  <Label>
+                    Platforms <span className="text-destructive">*</span>
+                  </Label>
                   <div className="flex flex-wrap gap-3">
                     {availablePlatforms.map((platform) => {
-                      const isSelected = platforms.includes(platform);
+                      const isSelected = platforms.includes(platform.toLowerCase());
                       const platformLower = platform.toLowerCase();
                       
                       const getPlatformIcon = () => {
@@ -329,8 +369,32 @@ export default function CreateStory() {
                 </div>
               )}
 
+              {/* Platform Account Selectors */}
+              {showAccountSelectors && (
+                <div className="space-y-4">
+                  {platforms.includes("facebook") && (
+                    <PlatformAccountSelector
+                      accounts={platformAccounts}
+                      selectedAccountIds={selectedAccountIds}
+                      onAccountToggle={handleAccountToggle}
+                      loading={loadingPlatformAccounts}
+                      platform="facebook"
+                    />
+                  )}
+                  {platforms.includes("instagram") && (
+                    <PlatformAccountSelector
+                      accounts={platformAccounts}
+                      selectedAccountIds={selectedAccountIds}
+                      onAccountToggle={handleAccountToggle}
+                      loading={loadingPlatformAccounts}
+                      platform="instagram"
+                    />
+                  )}
+                </div>
+              )}
+
               {/* Text Content */}
-              {typeOfStory && (
+              {showTextContent && typeOfStory && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="text">Text Content (Optional)</Label>
@@ -441,40 +505,71 @@ export default function CreateStory() {
                 </div>
               )}
 
-              <div className="space-y-2">
-                <Label htmlFor="scheduledAt">Schedule Date & Time</Label>
-                <Input
-                  id="scheduledAt"
-                  type="datetime-local"
-                  value={scheduledAt}
-                  onChange={(e) => setScheduledAt(e.target.value)}
-                />
-              </div>
+              {/* Status and Schedule */}
+              {showSchedule && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="status">
+                      Status <span className="text-destructive">*</span>
+                    </Label>
+                    <Select value={status} onValueChange={setStatus} required>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="scheduled">Scheduled</SelectItem>
+                        <SelectItem value="published">Published</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-              <div className="flex gap-4">
-                <Button
-                  type="submit"
-                  disabled={loading || uploading}
-                  className="flex-1"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      {uploading ? "Uploading..." : "Creating..."}
-                    </>
-                  ) : (
-                    "Create Story"
-                  )}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => navigate("/stories")}
-                  disabled={loading}
-                >
-                  Cancel
-                </Button>
-              </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="scheduledAt">
+                      Schedule Date & Time <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="scheduledAt"
+                      type="datetime-local"
+                      value={scheduledAt}
+                      onChange={(e) => setScheduledAt(e.target.value)}
+                      required={showSchedule}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Submit Buttons */}
+              {typeOfStory && (
+                <div className="flex gap-4">
+                  <Button
+                    type="submit"
+                    disabled={loading || uploading}
+                    className="flex-1"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Creating...
+                      </>
+                    ) : uploading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Uploading...
+                      </>
+                    ) : (
+                      "Create Story"
+                    )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => navigate("/stories")}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
             </form>
           </CardContent>
         </Card>
@@ -483,16 +578,16 @@ export default function CreateStory() {
       <AiPromptModal
         open={aiModalOpen}
         onClose={() => setAiModalOpen(false)}
-        fieldType={aiModalField}
         onGenerate={handleAiGenerate}
+        fieldType={aiModalField}
         context={{
           userId: user?.id,
           apiKey: openaiApiKey,
           platforms: platforms,
-          typeOfStory: typeOfStory,
+          typeOfPost: typeOfStory,
         }}
       />
-      
+
       <AlertDialog open={showConnectionAlert} onOpenChange={setShowConnectionAlert}>
         <AlertDialogContent>
           <AlertDialogHeader>
