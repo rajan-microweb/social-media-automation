@@ -47,14 +47,44 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // API Key authentication
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+    // Check for API key auth first (for external integrations like n8n)
     const apiKey = req.headers.get('x-api-key');
     const expectedApiKey = Deno.env.get('N8N_API_KEY');
+    const authHeader = req.headers.get('Authorization');
 
-    if (!apiKey || apiKey !== expectedApiKey) {
-      console.error('Invalid or missing API key');
+    let userId: string | null = null;
+    let isApiKeyAuth = false;
+
+    if (apiKey && apiKey === expectedApiKey) {
+      // API key authentication (external integrations)
+      isApiKeyAuth = true;
+      console.log('Authenticated via API key');
+    } else if (authHeader?.startsWith('Bearer ')) {
+      // JWT authentication (frontend) - use service role to verify user
+      const token = authHeader.replace('Bearer ', '');
+      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      });
+      
+      const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+      
+      if (userError || !user) {
+        console.error('JWT validation failed:', userError);
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized - Invalid token' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      userId = user.id;
+      console.log('Authenticated via JWT for user:', userId);
+    } else {
+      console.error('No valid authentication provided');
       return new Response(
-        JSON.stringify({ error: 'Unauthorized - Invalid API key' }),
+        JSON.stringify({ error: 'Unauthorized - Missing authentication' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -68,17 +98,19 @@ Deno.serve(async (req) => {
       );
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
     // Create service client for database operations
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
 
     const body = await req.json();
-    const { story_id, user_id, ...rawUpdateData } = body;
+    const { story_id, user_id: bodyUserId, ...rawUpdateData } = body;
 
-    // Validate user_id is required
-    if (!user_id) {
+    // For API key auth, user_id must be provided in body
+    // For JWT auth, use the authenticated user's ID
+    const targetUserId = isApiKeyAuth ? bodyUserId : userId;
+
+    if (!targetUserId) {
       return new Response(
         JSON.stringify({ error: 'user_id is required' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -86,7 +118,7 @@ Deno.serve(async (req) => {
     }
 
     const uuidSchema = z.string().uuid();
-    const userIdResult = uuidSchema.safeParse(user_id);
+    const userIdResult = uuidSchema.safeParse(targetUserId);
     if (!userIdResult.success) {
       return new Response(
         JSON.stringify({ error: 'Invalid user_id format' }),
@@ -138,7 +170,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    if (story.user_id !== user_id) {
+    if (story.user_id !== targetUserId) {
       console.error('Unauthorized: User does not own this story');
       return new Response(
         JSON.stringify({ error: 'Unauthorized' }),
@@ -146,7 +178,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('Updating story:', story_id, 'for user:', user_id, 'with validated data:', updateData);
+    console.log('Updating story:', story_id, 'for user:', targetUserId, 'with validated data:', updateData);
 
     const { data, error } = await supabase
       .from('stories')
