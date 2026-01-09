@@ -31,8 +31,8 @@ const PLATFORM_MAP: Record<string, string[]> = {
   onlyText: ["Facebook", "LinkedIn"],
   image: ["Facebook", "Instagram", "LinkedIn"],
   carousel: ["Facebook", "Instagram", "LinkedIn"],
-  video: ["Facebook", "Instagram", "LinkedIn", "YouTube"],
-  shorts: ["Facebook", "Instagram", "YouTube"],
+  video: ["Facebook", "Instagram", "LinkedIn"],
+  shorts: ["Facebook", "Instagram"],
   article: ["LinkedIn"],
   pdf: ["LinkedIn"],
 };
