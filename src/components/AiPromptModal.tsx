@@ -5,6 +5,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { uploadMediaFromUrl, uploadBase64ToStorage } from "@/lib/mediaUploadUtils";
 
 interface AiContext {
   userId?: string;
@@ -35,6 +37,7 @@ export function AiPromptModal({
 }: AiPromptModalProps) {
   const [prompt, setPrompt] = useState("");
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState("");
 
   const handleGenerate = async () => {
     if (!prompt.trim()) {
@@ -43,6 +46,7 @@ export function AiPromptModal({
     }
 
     setLoading(true);
+    setUploadProgress("");
 
     try {
       // Build payload with prompt and context
@@ -68,6 +72,8 @@ export function AiPromptModal({
         payload.pdfPrompt = prompt;
       }
 
+      setUploadProgress("Generating content...");
+
       const response = await fetch("https://n8n.srv1248804.hstgr.cloud/webhook/ai-content-generator", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -85,11 +91,17 @@ export function AiPromptModal({
         onGenerate(data.text);
         toast.success("Text generated successfully");
       } else if (fieldType === "image" && data.imageUrl) {
-        onGenerate(data.imageUrl);
-        toast.success("Image generated successfully");
+        // Upload AI-generated image to Supabase storage
+        setUploadProgress("Uploading image to storage...");
+        const permanentUrl = await uploadAiMediaToStorage(data.imageUrl, "image");
+        onGenerate(permanentUrl);
+        toast.success("Image generated and stored successfully");
       } else if (fieldType === "video" && data.videoUrl) {
-        onGenerate(data.videoUrl);
-        toast.success("Video generated successfully");
+        // Upload AI-generated video to Supabase storage
+        setUploadProgress("Uploading video to storage...");
+        const permanentUrl = await uploadAiMediaToStorage(data.videoUrl, "video");
+        onGenerate(permanentUrl);
+        toast.success("Video generated and stored successfully");
       } else if (fieldType === "pdf" && data.pdfUrl) {
         onGenerate(data.pdfUrl);
         toast.success("PDF generated successfully");
@@ -104,6 +116,31 @@ export function AiPromptModal({
       toast.error(error.message || "Failed to generate content");
     } finally {
       setLoading(false);
+      setUploadProgress("");
+    }
+  };
+
+  /**
+   * Uploads AI-generated media to Supabase storage
+   * Handles both regular URLs and base64 data URLs
+   */
+  const uploadAiMediaToStorage = async (
+    url: string,
+    mediaType: "image" | "video"
+  ): Promise<string> => {
+    try {
+      // Check if it's a base64 data URL
+      if (url.startsWith("data:")) {
+        return await uploadBase64ToStorage(url, mediaType, supabase);
+      }
+      
+      // Regular URL - download and upload
+      return await uploadMediaFromUrl(url, mediaType, supabase);
+    } catch (error) {
+      console.error("Failed to upload to storage, using original URL:", error);
+      // Fall back to original URL if upload fails
+      toast.warning("Could not store in permanent storage, using original URL");
+      return url;
     }
   };
 
@@ -132,6 +169,12 @@ export function AiPromptModal({
               disabled={loading}
             />
           </div>
+          {uploadProgress && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>{uploadProgress}</span>
+            </div>
+          )}
           <div className="flex justify-end gap-3">
             <Button type="button" variant="outline" onClick={handleClose} disabled={loading}>
               Cancel
