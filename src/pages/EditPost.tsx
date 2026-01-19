@@ -1,0 +1,1087 @@
+import { useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { toast } from "sonner";
+import { z } from "zod";
+import { Sparkles } from "lucide-react";
+import { AiPromptModal } from "@/components/AiPromptModal";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { usePlatformAccounts } from "@/hooks/usePlatformAccounts";
+import { PlatformAccountSelector } from "@/components/posts/PlatformAccountSelector";
+
+// Platform configuration based on post type
+const PLATFORM_MAP: Record<string, string[]> = {
+  onlyText: ["Facebook", "LinkedIn"],
+  image: ["Facebook", "Instagram", "LinkedIn"],
+  carousel: ["Facebook", "Instagram", "LinkedIn"],
+  video: ["Facebook", "Instagram", "LinkedIn", "YouTube"],
+  shorts: ["Facebook", "Instagram", "YouTube"],
+  article: ["LinkedIn"],
+  pdf: ["LinkedIn"],
+};
+
+const postSchema = z.object({
+  type_of_post: z.string().min(1, "Type of post is required"),
+  platforms: z.array(z.string()).min(1, "At least one platform is required"),
+  account_type: z.string().optional(),
+  text: z.string().max(5000).optional(),
+  image: z.string().url().optional().or(z.literal("")),
+  video: z.string().url().optional().or(z.literal("")),
+  pdf: z.string().url().optional().or(z.literal("")),
+  title: z.string().optional(),
+  description: z.string().max(2000).optional(),
+  url: z.string().url().optional().or(z.literal("")),
+  tags: z.array(z.string()).optional(),
+  status: z.enum(["draft", "scheduled", "published"]),
+  scheduled_at: z.string().optional(),
+});
+
+export default function EditPost() {
+  const { id } = useParams();
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  // Form state
+  const [typeOfPost, setTypeOfPost] = useState("");
+  const [platforms, setPlatforms] = useState<string[]>([]);
+  const [selectedAccountIds, setSelectedAccountIds] = useState<string[]>([]);
+
+  // Use the platform accounts hook
+  const { accounts: platformAccounts, loading: loadingPlatformAccounts } = usePlatformAccounts(user?.id, platforms);
+
+  // Platform connection state
+  const [connectedPlatforms, setConnectedPlatforms] = useState<string[]>([]);
+  const [showConnectionAlert, setShowConnectionAlert] = useState(false);
+  const [alertMessage, setAlertMessage] = useState("");
+  const [alertPlatform, setAlertPlatform] = useState("");
+  const [textContent, setTextContent] = useState("");
+  const [articleTitle, setArticleTitle] = useState("");
+  const [articleDescription, setArticleDescription] = useState("");
+  const [articleUrl, setArticleUrl] = useState("");
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [existingMediaUrl, setExistingMediaUrl] = useState("");
+  const [youtubeTitle, setYoutubeTitle] = useState("");
+  const [youtubeDescription, setYoutubeDescription] = useState("");
+  const [instagramTags, setInstagramTags] = useState("");
+  const [facebookTags, setFacebookTags] = useState("");
+  const [status, setStatus] = useState("draft");
+  const [scheduledAt, setScheduledAt] = useState("");
+  const [articleThumbnailFile, setArticleThumbnailFile] = useState<File | null>(null);
+  const [articleThumbnailUrl, setArticleThumbnailUrl] = useState("");
+  const [existingThumbnailUrl, setExistingThumbnailUrl] = useState("");
+
+  // AI Modal state
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [aiModalField, setAiModalField] = useState<"text" | "image" | "video" | "pdf">("text");
+  const [aiModalTarget, setAiModalTarget] = useState<string>("");
+
+  // OpenAI connection state
+  const [openaiConnected, setOpenaiConnected] = useState(false);
+  const [openaiApiKey, setOpenaiApiKey] = useState("");
+  const [showOpenAIAlert, setShowOpenAIAlert] = useState(false);
+
+  // AI-generated URLs
+  const [imageUrl, setImageUrl] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
+  const [pdfUrl, setPdfUrl] = useState("");
+
+  // Available platforms based on post type
+  const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
+
+  // Fetch connected platforms on mount
+  useEffect(() => {
+    const fetchConnectedPlatforms = async () => {
+      if (!user) return;
+
+      const { data } = await supabase
+        .from("platform_integrations")
+        .select("platform_name, credentials")
+        .eq("user_id", user.id);
+
+      if (data) {
+        const platformNames = data.map((p) => p.platform_name);
+        setConnectedPlatforms(platformNames);
+        const openaiIntegration = data.find((p) => p.platform_name.toLowerCase() === "openai");
+        setOpenaiConnected(!!openaiIntegration);
+        if (openaiIntegration?.credentials && typeof openaiIntegration.credentials === "object") {
+          setOpenaiApiKey((openaiIntegration.credentials as any).api_key || "");
+        }
+      }
+    };
+
+    fetchConnectedPlatforms();
+  }, [user]);
+
+  // Fetch existing post data
+  useEffect(() => {
+    if (!user || !id) return;
+
+    const fetchPost = async () => {
+      const { data, error } = await supabase
+        .from("posts")
+        .select("*")
+        .eq("id", id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (error || !data) {
+        toast.error("Post not found");
+        navigate("/posts");
+        return;
+      }
+
+      // Set form values from existing post
+      setTypeOfPost(data.type_of_post || "");
+      setPlatforms(data.platforms?.map((p: string) => p.toLowerCase()) || []);
+      setTextContent(data.text || "");
+      setArticleTitle(data.title || "");
+      setArticleDescription(data.description || "");
+      setArticleUrl(data.url || "");
+      setStatus(data.status);
+
+      // Convert UTC datetime to local timezone for datetime-local input
+      if (data.scheduled_at) {
+        const date = new Date(data.scheduled_at);
+        const offset = date.getTimezoneOffset();
+        const localDate = new Date(date.getTime() - offset * 60 * 1000);
+        setScheduledAt(localDate.toISOString().slice(0, 16));
+      } else {
+        setScheduledAt("");
+      }
+
+      // Set existing media URL
+      if (data.type_of_post === "article" && data.image) {
+        setExistingThumbnailUrl(data.image);
+      } else {
+        if (data.image) setExistingMediaUrl(data.image);
+        if (data.video) setExistingMediaUrl(data.video);
+        if (data.pdf) setExistingMediaUrl(data.pdf);
+      }
+
+      // Parse account type (selected accounts)
+      if (data.account_type) {
+        setSelectedAccountIds(data.account_type.split(","));
+      }
+
+      // Parse platform-specific tags
+      if (data.tags && Array.isArray(data.tags)) {
+        data.tags.forEach((tag: string) => {
+          if (tag.startsWith("youtube_title:")) {
+            setYoutubeTitle(tag.replace("youtube_title:", ""));
+          } else if (tag.startsWith("youtube_description:")) {
+            setYoutubeDescription(tag.replace("youtube_description:", ""));
+          } else if (tag.startsWith("instagram_tags:")) {
+            setInstagramTags(tag.replace("instagram_tags:", ""));
+          } else if (tag.startsWith("facebook_tags:")) {
+            setFacebookTags(tag.replace("facebook_tags:", ""));
+          }
+        });
+      }
+    };
+
+    fetchPost();
+  }, [user, id, navigate]);
+
+  // Reset form when type changes
+  useEffect(() => {
+    if (typeOfPost) {
+      setAvailablePlatforms(PLATFORM_MAP[typeOfPost] || []);
+    } else {
+      setAvailablePlatforms([]);
+    }
+  }, [typeOfPost]);
+
+  // Reset selected accounts when platforms change (but preserve valid ones)
+  useEffect(() => {
+    // Filter out account IDs that no longer belong to selected platforms
+    const validAccountIds = selectedAccountIds.filter((id) => platformAccounts.some((account) => account.id === id));
+    if (validAccountIds.length !== selectedAccountIds.length) {
+      setSelectedAccountIds(validAccountIds);
+    }
+  }, [platforms, platformAccounts]);
+
+  const handlePlatformChange = (platform: string, checked: boolean) => {
+    // Check if platform is connected before allowing selection (case-insensitive)
+    const isConnected = connectedPlatforms.some((p) => p.toLowerCase() === platform.toLowerCase());
+
+    if (checked && !isConnected) {
+      setAlertMessage(`Please connect your ${platform} account first to select this platform.`);
+      setAlertPlatform(platform);
+      setShowConnectionAlert(true);
+      return;
+    }
+
+    if (checked) {
+      setPlatforms([...platforms, platform.toLowerCase()]);
+    } else {
+      setPlatforms(platforms.filter((p) => p !== platform.toLowerCase()));
+    }
+  };
+
+  const handleAccountToggle = (accountId: string) => {
+    if (selectedAccountIds.includes(accountId)) {
+      setSelectedAccountIds(selectedAccountIds.filter((id) => id !== accountId));
+    } else {
+      setSelectedAccountIds([...selectedAccountIds, accountId]);
+    }
+  };
+
+  const openAiModal = (field: "text" | "image" | "video" | "pdf", target: string) => {
+    if (!openaiConnected) {
+      setShowOpenAIAlert(true);
+      return;
+    }
+    setAiModalField(field);
+    setAiModalTarget(target);
+    setAiModalOpen(true);
+  };
+
+  const handleAiGenerate = async (content: string) => {
+    if (aiModalTarget === "textContent") {
+      setTextContent(content);
+    } else if (aiModalTarget === "articleTitle") {
+      setArticleTitle(content);
+    } else if (aiModalTarget === "articleDescription") {
+      setArticleDescription(content);
+    } else if (aiModalTarget === "youtubeTitle") {
+      setYoutubeTitle(content);
+    } else if (aiModalTarget === "youtubeDescription") {
+      setYoutubeDescription(content);
+    } else if (aiModalTarget === "articleThumbnail") {
+      setArticleThumbnailUrl(content);
+      setArticleThumbnailFile(null);
+      toast.success("AI-generated thumbnail URL loaded");
+    } else if (aiModalTarget === "media") {
+      // For media, content is a URL from AI - store it directly
+      if (typeOfPost === "image" || typeOfPost === "carousel") {
+        setImageUrl(content);
+      } else if (typeOfPost === "video" || typeOfPost === "shorts") {
+        setVideoUrl(content);
+      } else if (typeOfPost === "pdf") {
+        setPdfUrl(content);
+      }
+      setMediaFile(null); // Clear file if URL is set
+      toast.success("AI-generated media URL loaded");
+    }
+  };
+
+  const uploadFile = async (file: File, folder: string): Promise<string> => {
+    const fileExt = file.name.split(".").pop();
+    const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
+    const filePath = `${folder}/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage.from("post-media").upload(filePath, file);
+
+    if (uploadError) throw uploadError;
+
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("post-media").getPublicUrl(filePath);
+
+    return publicUrl;
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setLoading(true);
+    setUploading(true);
+
+    try {
+      // Priority: AI URLs > new file upload > existing media
+      let uploadedUrl = existingMediaUrl;
+      let thumbnailUrl = existingThumbnailUrl;
+
+      // Check for AI-generated URLs first
+      if (imageUrl || videoUrl || pdfUrl) {
+        if (typeOfPost === "image" || typeOfPost === "carousel") {
+          uploadedUrl = imageUrl;
+        } else if (typeOfPost === "video" || typeOfPost === "shorts") {
+          uploadedUrl = videoUrl;
+        } else if (typeOfPost === "pdf") {
+          uploadedUrl = pdfUrl;
+        }
+      } else if (mediaFile) {
+        // Upload new file if present
+        let folder = "";
+        if (typeOfPost === "image" || typeOfPost === "carousel") {
+          folder = "images";
+        } else if (typeOfPost === "video" || typeOfPost === "shorts") {
+          folder = "videos";
+        } else if (typeOfPost === "pdf") {
+          folder = "pdfs";
+        }
+
+        if (folder) {
+          uploadedUrl = await uploadFile(mediaFile, folder);
+        }
+      }
+
+      // Handle article thumbnail upload
+      if (typeOfPost === "article") {
+        if (articleThumbnailUrl) {
+          thumbnailUrl = articleThumbnailUrl;
+        } else if (articleThumbnailFile) {
+          thumbnailUrl = await uploadFile(articleThumbnailFile, "images");
+        }
+      }
+
+      // Build account_type string from selected accounts
+      let accountTypeValue = "";
+      if (selectedAccountIds.length > 0) {
+        accountTypeValue = selectedAccountIds.join(",");
+      }
+
+      const data = {
+        type_of_post: typeOfPost,
+        platforms: platforms,
+        account_type: accountTypeValue || undefined,
+        text: textContent || undefined,
+        image:
+          typeOfPost === "image" || typeOfPost === "carousel"
+            ? uploadedUrl || ""
+            : typeOfPost === "article"
+              ? thumbnailUrl || ""
+              : "",
+        video: typeOfPost === "video" || typeOfPost === "shorts" ? uploadedUrl || "" : "",
+        pdf: typeOfPost === "pdf" ? uploadedUrl || "" : "",
+        title: articleTitle || "",
+        description: articleDescription || undefined,
+        url: articleUrl || undefined,
+        tags: [
+          youtubeTitle ? `youtube_title:${youtubeTitle}` : "",
+          youtubeDescription ? `youtube_description:${youtubeDescription}` : "",
+          instagramTags ? `instagram_tags:${instagramTags}` : "",
+          facebookTags ? `facebook_tags:${facebookTags}` : "",
+        ].filter(Boolean),
+        status: status,
+        scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+      };
+
+      postSchema.parse(data);
+
+      // Use direct Supabase client to update post (for UI updates)
+      const { error } = await supabase
+        .from("posts")
+        .update({
+          type_of_post: data.type_of_post,
+          platforms: data.platforms,
+          account_type: data.account_type ?? null,
+          text: data.text ?? null,
+          image: data.image || null,
+          video: data.video || null,
+          pdf: data.pdf || null,
+          title: data.title ?? "",
+          description: data.description ?? null,
+          url: data.url || null,
+          tags: data.tags.length > 0 ? data.tags : null,
+          status: data.status,
+          scheduled_at: data.scheduled_at ?? null,
+        })
+        .eq("id", id)
+        .eq("user_id", user!.id);
+
+      if (error) throw error;
+
+      toast.success("Post updated successfully");
+      navigate("/posts");
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        toast.error(error.errors[0].message);
+      } else {
+        toast.error(error.message || "Failed to update post");
+      }
+    } finally {
+      setLoading(false);
+      setUploading(false);
+    }
+  };
+
+  // Field visibility logic
+  const showTextContent = typeOfPost && typeOfPost !== "pdf";
+  const showPdfTextContent = typeOfPost === "pdf";
+  const showArticleFields = typeOfPost === "article";
+  const showMediaUpload = typeOfPost && typeOfPost !== "onlyText" && typeOfPost !== "article";
+  const showYoutubeFields = platforms.includes("youtube") && typeOfPost === "video";
+  const showInstagramFields = platforms.includes("instagram");
+  const showFacebookFields = platforms.includes("facebook");
+  const showAccountSelectors = platforms.length > 0;
+  const showSchedule = typeOfPost !== "";
+
+  // Media label based on type
+  const getMediaLabel = () => {
+    if (typeOfPost === "image") return "Upload Image";
+    if (typeOfPost === "carousel") return "Upload Images (Multiple)";
+    if (typeOfPost === "video") return "Upload Video (landscape)";
+    if (typeOfPost === "shorts") return "Upload Video (portrait)";
+    if (typeOfPost === "pdf") return "Upload PDF";
+    return "Upload Media";
+  };
+
+  if (!typeOfPost) return null;
+
+  return (
+    <DashboardLayout>
+      <div className="max-w-3xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold">Edit Post</h1>
+          <p className="text-muted-foreground">Update your social media post</p>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Post Details</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Type of Post - Always visible */}
+              <div className="space-y-2">
+                <Label htmlFor="typeOfPost">
+                  Type of Post <span className="text-destructive">*</span>
+                </Label>
+                <Select value={typeOfPost} onValueChange={setTypeOfPost} required>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="onlyText">Only Text</SelectItem>
+                    <SelectItem value="image">Image</SelectItem>
+                    <SelectItem value="carousel">Carousel (Multiple Images)</SelectItem>
+                    <SelectItem value="video">Video (landscape)</SelectItem>
+                    <SelectItem value="shorts">Reels/Shorts (portrait)</SelectItem>
+                    <SelectItem value="article">Article</SelectItem>
+                    <SelectItem value="pdf">PDF</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Platforms - Show when type is selected */}
+              {typeOfPost && (
+                <div className="space-y-2">
+                  <Label>
+                    Platforms <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="flex flex-wrap gap-3">
+                    {availablePlatforms.map((platform) => {
+                      const isSelected = platforms.includes(platform.toLowerCase());
+                      const platformLower = platform.toLowerCase();
+
+                      const getPlatformIcon = () => {
+                        switch (platformLower) {
+                          case "facebook":
+                            return (
+                              <svg viewBox="0 0 24 24" className="w-8 h-8" fill="#1877F2">
+                                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                              </svg>
+                            );
+                          case "instagram":
+                            return (
+                              <svg viewBox="0 0 24 24" className="w-8 h-8">
+                                <defs>
+                                  <linearGradient id="ig-gradient-edit" x1="0%" y1="100%" x2="100%" y2="0%">
+                                    <stop offset="0%" stopColor="#FFDC80" />
+                                    <stop offset="10%" stopColor="#FCAF45" />
+                                    <stop offset="30%" stopColor="#F77737" />
+                                    <stop offset="60%" stopColor="#C13584" />
+                                    <stop offset="100%" stopColor="#833AB4" />
+                                  </linearGradient>
+                                </defs>
+                                <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ig-gradient-edit)" />
+                                <circle cx="12" cy="12" r="4" fill="none" stroke="white" strokeWidth="1.5" />
+                                <circle cx="17.5" cy="6.5" r="1.5" fill="white" />
+                              </svg>
+                            );
+                          case "linkedin":
+                            return (
+                              <svg viewBox="0 0 24 24" className="w-8 h-8" fill="#0A66C2">
+                                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
+                              </svg>
+                            );
+                          case "youtube":
+                            return (
+                              <svg viewBox="0 0 24 24" className="w-8 h-8" fill="#FF0000">
+                                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
+                              </svg>
+                            );
+                          case "twitter":
+                            return (
+                              <svg viewBox="0 0 24 24" className="w-8 h-8" fill="#000000">
+                                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                              </svg>
+                            );
+                          default:
+                            return null;
+                        }
+                      };
+
+                      return (
+                        <button
+                          key={platform}
+                          type="button"
+                          onClick={() => handlePlatformChange(platform, !isSelected)}
+                          className={`flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all min-w-[100px] ${
+                            isSelected
+                              ? "border-primary bg-primary/5 shadow-sm"
+                              : "border-border hover:border-muted-foreground/50 bg-card"
+                          }`}
+                        >
+                          {getPlatformIcon()}
+                          <span className="mt-2 text-sm font-medium text-foreground">{platform}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Platform Account Selectors - Show for each selected platform */}
+              {showAccountSelectors && (
+                <div className="space-y-4">
+                  {platforms.includes("linkedin") && (
+                    <PlatformAccountSelector
+                      accounts={platformAccounts}
+                      selectedAccountIds={selectedAccountIds}
+                      onAccountToggle={handleAccountToggle}
+                      loading={loadingPlatformAccounts}
+                      platform="linkedin"
+                    />
+                  )}
+                  {platforms.includes("facebook") && (
+                    <PlatformAccountSelector
+                      accounts={platformAccounts}
+                      selectedAccountIds={selectedAccountIds}
+                      onAccountToggle={handleAccountToggle}
+                      loading={loadingPlatformAccounts}
+                      platform="facebook"
+                    />
+                  )}
+                  {platforms.includes("instagram") && (
+                    <PlatformAccountSelector
+                      accounts={platformAccounts}
+                      selectedAccountIds={selectedAccountIds}
+                      onAccountToggle={handleAccountToggle}
+                      loading={loadingPlatformAccounts}
+                      platform="instagram"
+                    />
+                  )}
+                  {platforms.includes("youtube") && (
+                    <PlatformAccountSelector
+                      accounts={platformAccounts}
+                      selectedAccountIds={selectedAccountIds}
+                      onAccountToggle={handleAccountToggle}
+                      loading={loadingPlatformAccounts}
+                      platform="youtube"
+                    />
+                  )}
+                  {platforms.includes("twitter") && (
+                    <PlatformAccountSelector
+                      accounts={platformAccounts}
+                      selectedAccountIds={selectedAccountIds}
+                      onAccountToggle={handleAccountToggle}
+                      loading={loadingPlatformAccounts}
+                      platform="twitter"
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* Text Content - Show for all except PDF */}
+              {showTextContent && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="textContent">Text Content (Optional)</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openAiModal("text", "textContent")}
+                      className="h-8 gap-1"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      AI Generate
+                    </Button>
+                  </div>
+                  <Textarea
+                    id="textContent"
+                    value={textContent}
+                    onChange={(e) => setTextContent(e.target.value)}
+                    rows={4}
+                    maxLength={2000}
+                    placeholder="Write your post text..."
+                  />
+                  <div className="text-xs text-muted-foreground text-right">{textContent.length}/2000</div>
+                </div>
+              )}
+
+              {/* Article Fields - Show only for article type */}
+              {showArticleFields && (
+                <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                  <h3 className="font-semibold">Article Fields</h3>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="articleTitle">
+                      Article Title <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="articleTitle"
+                      value={articleTitle}
+                      onChange={(e) => setArticleTitle(e.target.value)}
+                      placeholder="Enter title..."
+                      required={showArticleFields}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="articleDescription">
+                      Article Description <span className="text-destructive">*</span>
+                    </Label>
+                    <Textarea
+                      id="articleDescription"
+                      value={articleDescription}
+                      onChange={(e) => setArticleDescription(e.target.value)}
+                      rows={3}
+                      placeholder="Enter description..."
+                      required={showArticleFields}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="articleUrl">
+                      Article URL <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="articleUrl"
+                      type="url"
+                      value={articleUrl}
+                      onChange={(e) => setArticleUrl(e.target.value)}
+                      placeholder="https://..."
+                      required={showArticleFields}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="articleThumbnail">Upload Thumbnail (Optional)</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openAiModal("image", "articleThumbnail")}
+                        className="h-8 gap-1"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        AI Generate
+                      </Button>
+                    </div>
+                    {existingThumbnailUrl && (
+                      <div className="mb-2 p-3 bg-muted rounded-md">
+                        <p className="text-sm text-muted-foreground">Current thumbnail:</p>
+                        <img
+                          src={existingThumbnailUrl}
+                          alt="Current thumbnail"
+                          className="mt-2 max-w-xs rounded-lg border"
+                        />
+                      </div>
+                    )}
+                    <Input
+                      id="articleThumbnail"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setArticleThumbnailFile(file);
+                          setArticleThumbnailUrl(""); // Clear AI URL if file is selected
+                        }
+                      }}
+                    />
+                    {articleThumbnailFile && (
+                      <p className="text-sm text-muted-foreground">New file selected: {articleThumbnailFile.name}</p>
+                    )}
+                    {(articleThumbnailFile || articleThumbnailUrl) && (
+                      <div className="mt-2">
+                        <p className="text-sm text-muted-foreground mb-2">Preview:</p>
+                        <img
+                          src={
+                            articleThumbnailUrl ||
+                            (articleThumbnailFile ? URL.createObjectURL(articleThumbnailFile) : "")
+                          }
+                          alt="Article thumbnail preview"
+                          className="max-w-xs rounded-lg border"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Media Upload - Show for image, carousel, video, shorts, pdf */}
+              {showMediaUpload && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="mediaFile">
+                      {getMediaLabel()} {existingMediaUrl && "(Optional - Leave empty to keep current)"}
+                    </Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() =>
+                        openAiModal(
+                          typeOfPost === "pdf"
+                            ? "pdf"
+                            : typeOfPost === "video" || typeOfPost === "shorts"
+                              ? "video"
+                              : "image",
+                          "media",
+                        )
+                      }
+                      className="h-8 gap-1"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      AI Generate
+                    </Button>
+                  </div>
+                  {existingMediaUrl && (
+                    <div className="mb-2 p-3 bg-muted rounded-md">
+                      <p className="text-sm text-muted-foreground">Current file:</p>
+                      <a
+                        href={existingMediaUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-primary hover:underline break-all"
+                      >
+                        {existingMediaUrl}
+                      </a>
+                    </div>
+                  )}
+                  <Input
+                    id="mediaFile"
+                    type="file"
+                    onChange={(e) => {
+                      setMediaFile(e.target.files?.[0] || null);
+                      // Clear AI URLs when file is selected
+                      setImageUrl("");
+                      setVideoUrl("");
+                      setPdfUrl("");
+                    }}
+                    accept={
+                      typeOfPost === "image" || typeOfPost === "carousel"
+                        ? "image/*"
+                        : typeOfPost === "video" || typeOfPost === "shorts"
+                          ? "video/*"
+                          : typeOfPost === "pdf"
+                            ? "application/pdf"
+                            : "*"
+                    }
+                  />
+                  {mediaFile && <p className="text-sm text-muted-foreground">New file selected: {mediaFile.name}</p>}
+
+                  {/* Media Preview */}
+                  {(mediaFile || imageUrl || videoUrl || pdfUrl) && (
+                    <div className="mt-3 p-3 border rounded-lg bg-muted/30">
+                      <p className="text-sm font-medium mb-2">Preview:</p>
+
+                      {/* Image Preview */}
+                      {(typeOfPost === "image" || typeOfPost === "carousel") && (
+                        <>
+                          {mediaFile && (
+                            <img
+                              src={URL.createObjectURL(mediaFile)}
+                              alt="Preview"
+                              className="max-h-48 rounded-md object-contain"
+                            />
+                          )}
+                          {imageUrl && (
+                            <img
+                              src={imageUrl}
+                              alt="AI Generated Preview"
+                              className="max-h-48 rounded-md object-contain"
+                            />
+                          )}
+                        </>
+                      )}
+
+                      {/* Video Preview */}
+                      {(typeOfPost === "video" || typeOfPost === "shorts") && (
+                        <>
+                          {mediaFile && (
+                            <video src={URL.createObjectURL(mediaFile)} controls className="max-h-48 rounded-md" />
+                          )}
+                          {videoUrl && <video src={videoUrl} controls className="max-h-48 rounded-md" />}
+                        </>
+                      )}
+
+                      {/* PDF Preview */}
+                      {typeOfPost === "pdf" && (
+                        <>
+                          {mediaFile && (
+                            <div className="flex items-center gap-2 p-3 bg-background rounded-md">
+                              <div className="text-2xl">📄</div>
+                              <div>
+                                <p className="text-sm font-medium">{mediaFile.name}</p>
+                                <p className="text-xs text-muted-foreground">{(mediaFile.size / 1024).toFixed(2)} KB</p>
+                              </div>
+                            </div>
+                          )}
+                          {pdfUrl && (
+                            <div className="flex items-center gap-2 p-3 bg-background rounded-md">
+                              <div className="text-2xl">📄</div>
+                              <div>
+                                <p className="text-sm font-medium">AI Generated PDF</p>
+                                <a
+                                  href={pdfUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-primary hover:underline"
+                                >
+                                  View PDF
+                                </a>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {/* Media Notifications */}
+                  {typeOfPost === "video" && platforms.includes("instagram") && (
+                    <p className="text-sm text-blue-600">(In Instagram, Now Video is posted as Reel...)</p>
+                  )}
+
+                  {typeOfPost === "shorts" && platforms.includes("facebook") && (
+                    <p className="text-sm text-blue-600">(In Facebook, Now Reel is posted as Video...)</p>
+                  )}
+                </div>
+              )}
+
+              {/* PDF Text Content - Show only for PDF type */}
+              {showPdfTextContent && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="pdfTextContent">Text Content (Optional)</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openAiModal("text", "textContent")}
+                      className="h-8 gap-1"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      AI Generate
+                    </Button>
+                  </div>
+                  <Textarea
+                    id="pdfTextContent"
+                    value={textContent}
+                    onChange={(e) => setTextContent(e.target.value)}
+                    rows={4}
+                    maxLength={2000}
+                    placeholder="Write accompanying text for your PDF post..."
+                  />
+                  <div className="text-xs text-muted-foreground text-right">{textContent.length}/2000</div>
+                </div>
+              )}
+
+              {/* YouTube Fields - Show when YouTube selected and type is video */}
+              {showYoutubeFields && (
+                <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                  <h3 className="font-semibold">YouTube Fields</h3>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="youtubeTitle">
+                        Video Title <span className="text-destructive">*</span>
+                      </Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openAiModal("text", "youtubeTitle")}
+                        className="h-8 gap-1"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        AI
+                      </Button>
+                    </div>
+                    <Input
+                      id="youtubeTitle"
+                      value={youtubeTitle}
+                      onChange={(e) => setYoutubeTitle(e.target.value)}
+                      placeholder="Enter video title..."
+                      required={showYoutubeFields}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="youtubeDescription">
+                        Video Description <span className="text-destructive">*</span>
+                      </Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openAiModal("text", "youtubeDescription")}
+                        className="h-8 gap-1"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        AI
+                      </Button>
+                    </div>
+                    <Textarea
+                      id="youtubeDescription"
+                      value={youtubeDescription}
+                      onChange={(e) => setYoutubeDescription(e.target.value)}
+                      rows={3}
+                      placeholder="Enter video description..."
+                      required={showYoutubeFields}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Instagram Fields - Show when Instagram selected */}
+              {showInstagramFields && (
+                <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                  <h3 className="font-semibold">Instagram Fields</h3>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="instagramTags">Instagram Tags</Label>
+                    <Input
+                      id="instagramTags"
+                      value={instagramTags}
+                      onChange={(e) => setInstagramTags(e.target.value)}
+                      placeholder="Enter username of Instagram profile to tag or mention..."
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Facebook Fields - Show when Facebook selected */}
+              {showFacebookFields && (
+                <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
+                  <h3 className="font-semibold">Facebook Fields</h3>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="facebookTags">Facebook Tags</Label>
+                    <Input
+                      id="facebookTags"
+                      value={facebookTags}
+                      onChange={(e) => setFacebookTags(e.target.value)}
+                      placeholder="Enter URLs of Facebook Profile to tag or mention..."
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Schedule - Show when type is selected */}
+              {showSchedule && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="status">
+                      Status <span className="text-destructive">*</span>
+                    </Label>
+                    <Select value={status} onValueChange={setStatus} required>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="scheduled">Scheduled</SelectItem>
+                        <SelectItem value="published">Published</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="scheduledAt">
+                      Schedule Date & Time <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="scheduledAt"
+                      type="datetime-local"
+                      value={scheduledAt}
+                      onChange={(e) => setScheduledAt(e.target.value)}
+                      required={showSchedule}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Submit Buttons */}
+              {typeOfPost && (
+                <div className="flex gap-3">
+                  <Button type="submit" disabled={loading || uploading}>
+                    {uploading ? "Uploading..." : loading ? "Updating..." : "Update Post"}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => navigate("/posts")}>
+                    Cancel
+                  </Button>
+                </div>
+              )}
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+
+      <AiPromptModal
+        open={aiModalOpen}
+        onClose={() => setAiModalOpen(false)}
+        onGenerate={handleAiGenerate}
+        fieldType={aiModalField}
+        context={{
+          userId: user?.id,
+          apiKey: openaiApiKey,
+          platforms: platforms,
+          typeOfPost: typeOfPost,
+          title: articleTitle,
+          description: articleDescription,
+        }}
+      />
+
+      <AlertDialog open={showConnectionAlert} onOpenChange={setShowConnectionAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Account Connection Required</AlertDialogTitle>
+            <AlertDialogDescription>{alertMessage}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => navigate("/accounts")}>Go to Accounts</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showOpenAIAlert} onOpenChange={setShowOpenAIAlert}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>OpenAI Not Connected</AlertDialogTitle>
+            <AlertDialogDescription>
+              Please connect your OpenAI account first to use AI generation features.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={() => navigate("/accounts")}>Go to Accounts</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </DashboardLayout>
+  );
+}

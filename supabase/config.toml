@@ -1,0 +1,64 @@
+project_id = "fcfdyivyjidzqjtanalq"
+
+[functions.get-posts]
+verify_jwt = false
+
+[functions.update-post]
+verify_jwt = false
+
+[functions.delete-post]
+verify_jwt = false
+
+[functions.delete-media]
+verify_jwt = false
+
+[functions.store-platform-integration]
+verify_jwt = false
+
+[functions.get-platform-integration]
+verify_jwt = false
+
+[functions.update-platform-integration]
+verify_jwt = false
+
+[functions.update-story]
+verify_jwt = false
+
+[functions.delete-story]
+verify_jwt = false
+
+[functions.get-login-activity]
+verify_jwt = true
+
+[functions.revoke-other-session]
+verify_jwt = true
+
+[functions.validate-openai-key]
+verify_jwt = true
+
+[functions.bulk-update-posts]
+verify_jwt = true
+
+[functions.bulk-delete-posts]
+verify_jwt = true
+
+[functions.bulk-update-stories]
+verify_jwt = true
+
+[functions.bulk-delete-stories]
+verify_jwt = true
+
+[functions.get-all-posts]
+verify_jwt = false
+
+[functions.get-all-stories]
+verify_jwt = false
+
+[functions.get-platform-activity]
+verify_jwt = true
+
+[functions.upload-ai-media]
+verify_jwt = true
+
+[functions.migrate-encryption]
+verify_jwt = false

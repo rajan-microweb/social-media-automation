@@ -1,0 +1,963 @@
+import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Instagram,
+  Linkedin,
+  Twitter,
+  ShieldAlert,
+  X,
+  Monitor,
+  Brain,
+  Facebook,
+  Youtube,
+  RefreshCw,
+} from "lucide-react";
+import { useState, useEffect } from "react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { PlatformConnectDialog } from "@/components/PlatformConnectDialog";
+
+interface ConnectedAccount {
+  id: string;
+  platform: string;
+  accountId: string;
+  accountName: string;
+  accountType: "personal" | "company";
+  avatarUrl: string | null;
+  platformIcon: React.ComponentType<{ className?: string }>;
+  platformColor: string;
+}
+
+interface PlatformConfig {
+  name: string;
+  icon: React.ComponentType<{ className?: string }>;
+  color: string;
+  isApiKey?: boolean;
+}
+
+interface LoginActivitySession {
+  userId: string;
+  maskedEmail: string;
+  connectedAt: string;
+  lastUpdated: string;
+  matchedAccounts: {
+    accountName: string;
+    accountType: string;
+    linkedinId: string;
+  }[];
+}
+
+export default function Accounts() {
+  const { user } = useAuth();
+  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshingPlatform, setRefreshingPlatform] = useState<string | null>(null);
+  const [loginActivity, setLoginActivity] = useState<LoginActivitySession[]>([]);
+  const [loadingActivity, setLoadingActivity] = useState(false);
+  const [revokingSession, setRevokingSession] = useState<string | null>(null);
+  const [disconnectDialog, setDisconnectDialog] = useState<{ open: boolean; platformName: string | null }>({
+    open: false,
+    platformName: null,
+  });
+
+  // State for generic platform connect dialog (including OpenAI)
+  const [platformDialog, setPlatformDialog] = useState<{ open: boolean; platform: string | null }>({
+    open: false,
+    platform: null,
+  });
+
+  const platformConfigs: Record<string, PlatformConfig> = {
+    linkedin: {
+      name: "LinkedIn",
+      icon: Linkedin,
+      color: "text-[#0A66C2]",
+    },
+    facebook: {
+      name: "Facebook",
+      icon: Facebook,
+      color: "text-[#1877F3]",
+    },
+    instagram: {
+      name: "Instagram",
+      icon: Instagram,
+      color: "text-[#E4405F]",
+    },
+    // twitter: {
+    //   name: "Twitter",
+    //   icon: Twitter,
+    //   color: "text-[#1DA1F2]",
+    // },
+    // youtube: {
+    //   name: "YouTube",
+    //   icon: Youtube,
+    //   color: "text-[#FF0000]",
+    // },
+    openai: {
+      name: "OpenAI",
+      icon: Brain,
+      color: "text-[#10A37F]",
+      isApiKey: true,
+    },
+  };
+
+  // Get all LinkedIn IDs from connected accounts
+  const getLinkedInIds = (accounts: ConnectedAccount[]): string[] => {
+    return accounts.filter((acc) => acc.platform === "LinkedIn").map((acc) => acc.accountId);
+  };
+
+  // Fetch login activity
+  const fetchLoginActivity = async (linkedinIds: string[]) => {
+    if (!user?.id || linkedinIds.length === 0) {
+      setLoginActivity([]);
+      return;
+    }
+
+    setLoadingActivity(true);
+    try {
+      const response = await supabase.functions.invoke("get-login-activity", {
+        body: {
+          user_id: user.id,
+          linkedin_ids: linkedinIds,
+        },
+      });
+
+      if (response.error) {
+        console.error("Error fetching login activity:", response.error);
+        return;
+      }
+
+      setLoginActivity(response.data?.loginActivity || []);
+    } catch (error) {
+      console.error("Error fetching login activity:", error);
+    } finally {
+      setLoadingActivity(false);
+    }
+  };
+
+  // Revoke access for another session
+  const handleRevokeAccess = async (session: LoginActivitySession) => {
+    if (!user?.id) return;
+
+    setRevokingSession(session.userId);
+    try {
+      const linkedinIds = session.matchedAccounts.map((acc) => acc.linkedinId);
+
+      const response = await supabase.functions.invoke("revoke-other-session", {
+        body: {
+          requesting_user_id: user.id,
+          target_user_id: session.userId,
+          linkedin_ids: linkedinIds,
+        },
+      });
+
+      if (response.error) {
+        toast.error("Failed to revoke access");
+        console.error("Error revoking access:", response.error);
+        return;
+      }
+
+      toast.success("Access revoked successfully");
+      // Refresh login activity
+      const linkedInIds = getLinkedInIds(connectedAccounts);
+      await fetchLoginActivity(linkedInIds);
+    } catch (error) {
+      console.error("Error revoking access:", error);
+      toast.error("Failed to revoke access");
+    } finally {
+      setRevokingSession(null);
+    }
+  };
+
+  const fetchConnectedAccounts = async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("platform_integrations")
+      .select("id, platform_name, credentials")
+      .eq("user_id", user.id)
+      .eq("status", "active");
+
+    if (error) {
+      console.error("Error fetching integrations:", error);
+      setLoading(false);
+      return;
+    }
+
+    if (data) {
+      const accounts: ConnectedAccount[] = [];
+
+      data.forEach((integration) => {
+        const platformName = integration.platform_name.toLowerCase();
+        const config = platformConfigs[platformName];
+        if (!config) return;
+
+        const credentials = integration.credentials as any;
+        if (!credentials) return;
+
+        // --- HANDLE OPENAI ---
+        if (platformName === "openai") {
+          const orgName = credentials.organizations?.[0]?.org_title;
+          accounts.push({
+            id: `openai-${integration.id}`,
+            platform: config.name,
+            accountId: credentials.masked_key || "sk-...****",
+            // Use Org Name if available, else standard name
+            accountName: orgName ? `OpenAI (${orgName})` : "OpenAI API",
+            accountType: "personal",
+            avatarUrl: credentials.personal_info?.avatar_url || null,
+            platformIcon: config.icon,
+            platformColor: config.color,
+          });
+          return;
+        }
+
+        // --- HANDLE INSTAGRAM (like LinkedIn: personal + accounts array) ---
+        if (platformName === "instagram") {
+          // Personal account
+          if (credentials.personal_info) {
+            accounts.push({
+              id: `ig-personal-${credentials.personal_info.ig_business_id || credentials.personal_info.user_id}`,
+              platform: config.name,
+              accountId: credentials.personal_info.ig_business_id || credentials.personal_info.user_id,
+              accountName: credentials.personal_info.ig_username
+                ? `@${credentials.personal_info.ig_username}`
+                : "Instagram User",
+              accountType: "personal",
+              avatarUrl: credentials.personal_info.ig_avatar || credentials.personal_info.avatar_url || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+          // Multiple accounts array
+          if (Array.isArray(credentials.accounts)) {
+            credentials.accounts.forEach((account: any) => {
+              accounts.push({
+                id: `ig-account-${account.ig_business_id}`,
+                platform: config.name,
+                accountId: account.ig_business_id,
+                accountName: account.ig_username ? `@${account.ig_username}` : "Instagram Account",
+                accountType: "company",
+                avatarUrl: account.ig_avatar || null,
+                platformIcon: config.icon,
+                platformColor: config.color,
+              });
+            });
+          }
+          // Legacy single account format
+          if (!credentials.personal_info && !credentials.accounts && credentials.ig_username) {
+            accounts.push({
+              id: `ig-${credentials.ig_business_id}`,
+              platform: config.name,
+              accountId: credentials.ig_business_id,
+              accountName: `@${credentials.ig_username}`,
+              accountType: "personal",
+              avatarUrl: credentials.ig_avatar || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+        }
+
+        // --- HANDLE FACEBOOK (like LinkedIn: personal + pages array) ---
+        if (platformName === "facebook") {
+          // Personal account
+          if (credentials.personal_info) {
+            accounts.push({
+              id: `fb-personal-${credentials.personal_info.user_id}`,
+              platform: config.name,
+              accountId: credentials.personal_info.user_id,
+              accountName: credentials.personal_info.name || "Facebook User",
+              accountType: "personal",
+              avatarUrl: credentials.personal_info.avatar_url || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+          // Multiple pages array
+          if (Array.isArray(credentials.pages)) {
+            credentials.pages.forEach((page: any) => {
+              accounts.push({
+                id: `fb-page-${page.page_id}`,
+                platform: config.name,
+                accountId: page.page_id,
+                accountName: page.page_name || "Facebook Page",
+                accountType: "company",
+                avatarUrl: page.avatar_url || null,
+                platformIcon: config.icon,
+                platformColor: config.color,
+              });
+            });
+          }
+          // Legacy single page format
+          if (!credentials.personal_info && !credentials.pages && credentials.page_id) {
+            accounts.push({
+              id: `fb-${credentials.page_id}`,
+              platform: config.name,
+              accountId: credentials.page_id,
+              accountName: credentials.page_name || "Facebook Page",
+              accountType: "company",
+              avatarUrl: credentials.page_info?.avatar_url || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+        }
+
+        // --- HANDLE YOUTUBE ---
+        if (platformName === "youtube") {
+          // channel_info format (from n8n webhook)
+          if (credentials.channel_info) {
+            accounts.push({
+              id: `yt-channel-${credentials.channel_info.youtube_id}`,
+              platform: config.name,
+              accountId: credentials.channel_info.youtube_id,
+              accountName: credentials.channel_info.name || credentials.channel_info.handle || "YouTube Channel",
+              accountType: "company",
+              avatarUrl: credentials.channel_info.avatar_url || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+          // Personal/channel info from credentials (alternative format)
+          else if (credentials.personal_info) {
+            accounts.push({
+              id: `yt-personal-${credentials.personal_info.user_id || credentials.personal_info.channel_id}`,
+              platform: config.name,
+              accountId: credentials.personal_info.user_id || credentials.personal_info.channel_id,
+              accountName: credentials.personal_info.name || credentials.personal_info.channel_name || "YouTube User",
+              accountType: "personal",
+              avatarUrl: credentials.personal_info.avatar_url || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+          // Multiple channels array
+          if (Array.isArray(credentials.channels)) {
+            credentials.channels.forEach((channel: any) => {
+              accounts.push({
+                id: `yt-channel-${channel.channel_id}`,
+                platform: config.name,
+                accountId: channel.channel_id,
+                accountName: channel.channel_name || "YouTube Channel",
+                accountType: "company",
+                avatarUrl: channel.avatar_url || null,
+                platformIcon: config.icon,
+                platformColor: config.color,
+              });
+            });
+          }
+          // Legacy/simple format - check if we have basic token info
+          if (
+            !credentials.channel_info &&
+            !credentials.personal_info &&
+            !credentials.channels &&
+            (credentials.accessToken || credentials.clientId)
+          ) {
+            accounts.push({
+              id: `yt-${integration.id}`,
+              platform: config.name,
+              accountId: credentials.clientId || "youtube-account",
+              accountName: "YouTube Account",
+              accountType: "personal",
+              avatarUrl: null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+        }
+
+        // --- HANDLE TWITTER ---
+        if (platformName === "twitter") {
+          if (credentials.personal_info) {
+            accounts.push({
+              id: `twitter-${credentials.personal_info.user_id}`,
+              platform: config.name,
+              accountId: credentials.personal_info.user_id,
+              accountName: credentials.personal_info.name || `@${credentials.personal_info.username}`,
+              accountType: "personal",
+              avatarUrl: credentials.personal_info.avatar_url || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+          // Legacy/simple format
+          if (!credentials.personal_info && (credentials.accessToken || credentials.apiKey)) {
+            accounts.push({
+              id: `twitter-${integration.id}`,
+              platform: config.name,
+              accountId: "twitter-account",
+              accountName: "Twitter/X Account",
+              accountType: "personal",
+              avatarUrl: null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          }
+        }
+
+        // --- HANDLE LINKEDIN & OTHERS ---
+        if (credentials.personal_info && platformName === "linkedin") {
+          accounts.push({
+            id: `${platformName}-personal-${credentials.personal_info.linkedin_id || credentials.personal_info.user_id}`,
+            platform: config.name,
+            accountId: credentials.personal_info.linkedin_id || credentials.personal_info.user_id,
+            accountName: credentials.personal_info.name || `${config.name} User`,
+            accountType: "personal",
+            avatarUrl: credentials.personal_info.avatar_url || null,
+            platformIcon: config.icon,
+            platformColor: config.color,
+          });
+        }
+
+        if (Array.isArray(credentials.company_info)) {
+          credentials.company_info.forEach((company: any) => {
+            accounts.push({
+              id: `${platformName}-company-${company.company_id || company.page_id}`,
+              platform: config.name,
+              accountId: company.company_id || company.page_id,
+              accountName: company.company_name || company.page_name || "Company",
+              accountType: "company",
+              avatarUrl: company.company_logo || company.page_logo || null,
+              platformIcon: config.icon,
+              platformColor: config.color,
+            });
+          });
+        }
+      });
+
+      setConnectedAccounts(accounts);
+      const linkedInIds = accounts.filter((acc) => acc.platform === "LinkedIn").map((acc) => acc.accountId);
+      await fetchLoginActivity(linkedInIds);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchConnectedAccounts();
+
+    // Set up realtime subscription
+    const channel = supabase
+      .channel("platform-integrations-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "platform_integrations",
+        },
+        () => {
+          // Refetch accounts when changes occur
+          fetchConnectedAccounts();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  const handleConnect = (platform: string) => {
+    if (!user?.id) {
+      toast.error("Please log in to connect your account");
+      return;
+    }
+
+    // Open the platform dialog for all platforms including OpenAI
+    setPlatformDialog({ open: true, platform });
+  };
+
+  // Handle submit from PlatformConnectDialog
+  const handlePlatformDialogSubmit = async (fields: Record<string, string>) => {
+    if (!user?.id || !platformDialog.platform) {
+      toast.error("User not logged in or platform not specified");
+      return;
+    }
+
+    // Map display name to key used in DB (lowercase)
+    const platformKey =
+      Object.keys(platformConfigs).find(
+        (key) => platformConfigs[key].name.toLowerCase() === platformDialog.platform?.toLowerCase(),
+      ) || platformDialog.platform.toLowerCase();
+
+    // Step 1: Store credentials in the database first
+    try {
+      const { error: upsertError } = await supabase.from("platform_integrations").upsert(
+        {
+          user_id: user.id,
+          platform_name: platformKey,
+          credentials: fields,
+          status: "active",
+          updated_at: new Date().toISOString(),
+        },
+        {
+          onConflict: "user_id,platform_name",
+        },
+      );
+
+      if (upsertError) {
+        console.error("Error storing credentials:", upsertError);
+        toast.error("Failed to store credentials in database");
+        return;
+      }
+
+      toast.success("Credentials stored successfully!");
+
+      // Step 2: Only after successful storage, call the n8n webhook
+      try {
+        const response = await fetch("https://n8n.srv1248804.hstgr.cloud/webhook/update-credentials", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            platform_name: platformKey,
+            user_id: user.id,
+            ...fields,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error("Webhook error:", errorText);
+          // Don't show error since credentials are already stored
+        }
+      } catch (webhookError) {
+        console.error("Webhook call failed:", webhookError);
+        // Don't show error since credentials are already stored
+      }
+    } catch (error) {
+      console.error("Error storing credentials:", error);
+      toast.error(`Failed to store credentials: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+
+    setPlatformDialog({ open: false, platform: null });
+  };
+
+  // Handle refresh button click for a specific platform
+  const handleRefresh = async (platformName: string) => {
+    if (!user?.id) {
+      toast.error("Please log in to refresh credentials");
+      return;
+    }
+
+    // Map display name to key used in DB (lowercase)
+    const platformKey =
+      Object.keys(platformConfigs).find(
+        (key) => platformConfigs[key].name.toLowerCase() === platformName.toLowerCase(),
+      ) || platformName.toLowerCase();
+
+    setRefreshingPlatform(platformKey);
+    try {
+      const response = await fetch("https://n8n.srv1248804.hstgr.cloud/webhook/update-credentials?action=refresh", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          platform_name: platformKey,
+          user_id: user.id,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `HTTP ${response.status}`);
+      }
+
+      toast.success(`${platformName} credentials refreshed successfully!`);
+      // Refetch accounts to show updated data
+      await fetchConnectedAccounts();
+    } catch (error) {
+      console.error("Error refreshing credentials:", error);
+      toast.error(
+        `Failed to refresh ${platformName} credentials: ${error instanceof Error ? error.message : "Unknown error"}`,
+      );
+    } finally {
+      setRefreshingPlatform(null);
+    }
+  };
+
+  const openDisconnectDialog = (platformName: string) => {
+    setDisconnectDialog({ open: true, platformName });
+  };
+
+  const handleDisconnect = async () => {
+    const platformName = disconnectDialog.platformName;
+    if (!platformName || !user?.id) {
+      toast.error("Please log in to disconnect your account");
+      return;
+    }
+
+    try {
+      const platformKey = Object.keys(platformConfigs).find((key) => platformConfigs[key].name === platformName);
+
+      if (!platformKey) {
+        toast.error("Invalid platform");
+        return;
+      }
+
+      const { error } = await supabase
+        .from("platform_integrations")
+        .delete()
+        .eq("user_id", user.id)
+        .eq("platform_name", platformKey);
+
+      if (error) {
+        console.error("Error disconnecting platform:", error);
+        toast.error("Failed to disconnect platform");
+        return;
+      }
+
+      toast.success(`${platformName} disconnected successfully`);
+    } catch (error) {
+      console.error("Error disconnecting platform:", error);
+      toast.error("Failed to disconnect platform");
+    } finally {
+      setDisconnectDialog({ open: false, platformName: null });
+    }
+  };
+
+  // Group accounts by platform
+  const accountsByPlatform = connectedAccounts.reduce(
+    (acc, account) => {
+      if (!acc[account.platform]) {
+        acc[account.platform] = [];
+      }
+      acc[account.platform].push(account);
+      return acc;
+    },
+    {} as Record<string, ConnectedAccount[]>,
+  );
+
+  // Get all platform names (excluding API key platforms for the main list)
+  const socialPlatforms = Object.entries(platformConfigs)
+    .filter(([_, config]) => !config.isApiKey)
+    .map(([_, config]) => config.name);
+
+  // Get API key platforms
+  const apiKeyPlatforms = Object.entries(platformConfigs)
+    .filter(([_, config]) => config.isApiKey)
+    .map(([key, config]) => ({ key, ...config }));
+
+  if (loading) {
+    return (
+      <DashboardLayout>
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Social Media Accounts</h1>
+            <p className="text-muted-foreground mt-2">Connect and manage your social media accounts</p>
+          </div>
+          <div className="text-center py-12">
+            <p className="text-muted-foreground">Loading accounts...</p>
+          </div>
+        </div>
+      </DashboardLayout>
+    );
+  }
+
+  return (
+    <DashboardLayout>
+      {/* Platform Connect Dialog for all platforms including OpenAI */}
+      <PlatformConnectDialog
+        open={platformDialog.open}
+        platform={platformDialog.platform}
+        onClose={() => setPlatformDialog({ open: false, platform: null })}
+        onSubmit={handlePlatformDialogSubmit}
+      />
+      <div className="space-y-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Social Media Accounts</h1>
+          <p className="text-muted-foreground mt-2">Connect and manage your social media accounts</p>
+        </div>
+
+        {/* Login Activity Alert */}
+        {loginActivity.length > 0 && (
+          <div className="space-y-4">
+            <Alert variant="destructive" className="border-destructive/50 bg-destructive/10">
+              <ShieldAlert className="h-5 w-5" />
+              <AlertTitle className="text-lg font-semibold">Security Alert</AlertTitle>
+              <AlertDescription className="mt-2">
+                <p className="mb-4">
+                  Your connected account(s) are also logged in on {loginActivity.length} other session
+                  {loginActivity.length > 1 ? "s" : ""}. If you don't recognize this activity, consider changing your
+                  LinkedIn password.
+                </p>
+
+                <div className="space-y-3">
+                  {loginActivity.map((session, index) => (
+                    <Card key={index} className="bg-background/50 border-border">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-full bg-muted">
+                              <Monitor className="h-5 w-5 text-muted-foreground" />
+                            </div>
+                            <div>
+                              <p className="font-medium">{session.maskedEmail}</p>
+                              <p className="text-sm text-muted-foreground">
+                                Connected on{" "}
+                                {new Date(session.connectedAt).toLocaleDateString("en-US", {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </p>
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {session.matchedAccounts.map((acc, i) => (
+                                  <Badge key={i} variant="secondary" className="text-xs">
+                                    {acc.accountName} ({acc.accountType})
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => handleRevokeAccess(session)}
+                            disabled={revokingSession === session.userId}
+                          >
+                            {revokingSession === session.userId ? "Revoking..." : "Remove Access"}
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </AlertDescription>
+            </Alert>
+          </div>
+        )}
+
+        {/* API Key Integrations Section */}
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold">AI Integrations</h2>
+          {apiKeyPlatforms.map(({ key, name, icon: Icon, color }) => {
+            const platformAccounts = accountsByPlatform[name] || [];
+            const isConnected = platformAccounts.length > 0;
+            const connectedAccount = platformAccounts[0];
+
+            return (
+              <div key={key} className="space-y-4">
+                <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-muted/50">
+                      <Icon className={`h-6 w-6 ${color}`} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold">{name}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {isConnected ? (
+                          <span className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full bg-green-500" />
+                            Connected ({connectedAccount?.accountName || "API Key"})
+                          </span>
+                        ) : (
+                          "Not connected"
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {isConnected && (
+                      <Button variant="destructive" onClick={() => openDisconnectDialog(name)}>
+                        Disconnect
+                      </Button>
+                    )}
+                    <Button variant={isConnected ? "outline" : "default"} onClick={() => handleConnect(name)}>
+                      {isConnected ? "Update Key" : "Connect"}
+                    </Button>
+                  </div>
+                </div>
+                {/* --- ADD THIS: The card grid for OpenAI accounts --- */}
+                {isConnected && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {platformAccounts.map((account) => (
+                      <Card key={account.id} className="hover:shadow-lg transition-all duration-300 border-border/50">
+                        <CardHeader className="space-y-3">
+                          <div className="flex items-center gap-3">
+                            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                              <Icon className={`h-6 w-6 ${color}`} />
+                            </div>
+                            <div>
+                              <CardTitle className="text-base">{account.accountName}</CardTitle>
+                              <Badge variant="secondary" className="mt-1 text-xs bg-green-500/10 text-green-600">
+                                API Key
+                              </Badge>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <span className="h-2 w-2 rounded-full bg-green-500" />
+                            Connected
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Social Media Platforms Section */}
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold">Social Media Platforms</h2>
+          {socialPlatforms.map((platformName) => {
+            const platformKey = Object.keys(platformConfigs).find((key) => platformConfigs[key].name === platformName);
+            const config = platformKey ? platformConfigs[platformKey] : null;
+            const platformAccounts = accountsByPlatform[platformName] || [];
+            const Icon = config?.icon || Linkedin;
+
+            return (
+              <div key={platformName} className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-muted/50">
+                      <Icon className={`h-6 w-6 ${config?.color || "text-foreground"}`} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold">{platformName}</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {platformAccounts.length > 0
+                          ? `${platformAccounts.length} account${platformAccounts.length > 1 ? "s" : ""} connected`
+                          : "Not connected"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {platformAccounts.length > 0 && (
+                      <Button variant="destructive" onClick={() => openDisconnectDialog(platformName)}>
+                        Disconnect
+                      </Button>
+                    )}
+                    {platformAccounts.length > 0 ? (
+                      <Button
+                        variant="outline"
+                        onClick={() => handleRefresh(platformName)}
+                        disabled={refreshingPlatform !== null}
+                      >
+                        <RefreshCw
+                          className={`h-4 w-4 mr-2 ${refreshingPlatform === platformKey ? "animate-spin" : ""}`}
+                        />
+                        {refreshingPlatform === platformKey ? "Refreshing..." : "Refresh"}
+                      </Button>
+                    ) : (
+                      <Button variant="default" onClick={() => handleConnect(platformName)}>
+                        Connect
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {platformAccounts.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    {platformAccounts.map((account) => {
+                      const AccountIcon = account.platformIcon;
+                      return (
+                        <Card key={account.id} className="hover:shadow-lg transition-all duration-300 border-border/50">
+                          <CardHeader className="space-y-3">
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center gap-3">
+                                {account.avatarUrl ? (
+                                  <img
+                                    src={account.avatarUrl}
+                                    alt={account.accountName}
+                                    className="h-12 w-12 rounded-full object-cover border-2 border-border"
+                                  />
+                                ) : (
+                                  <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
+                                    <AccountIcon className={`h-6 w-6 ${account.platformColor}`} />
+                                  </div>
+                                )}
+                                <div>
+                                  <CardTitle className="text-base">{account.accountName}</CardTitle>
+                                  <Badge
+                                    variant="secondary"
+                                    className={`mt-1 text-xs ${
+                                      account.accountType === "personal"
+                                        ? "bg-blue-500/10 text-blue-600"
+                                        : account.platform === "YouTube"
+                                          ? "bg-red-500/10 text-red-600"
+                                          : "bg-purple-500/10 text-purple-600"
+                                    }`}
+                                  >
+                                    {account.accountType === "personal"
+                                      ? "Personal"
+                                      : account.platform === "YouTube"
+                                        ? "Channel"
+                                        : "Company"}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </div>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <span className="h-2 w-2 rounded-full bg-green-500" />
+                              Connected
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Disconnect Dialog */}
+        <AlertDialog
+          open={disconnectDialog.open}
+          onOpenChange={(open) => setDisconnectDialog({ open, platformName: null })}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Disconnect {disconnectDialog.platformName}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to disconnect your {disconnectDialog.platformName} account? You will need to
+                reconnect to use this platform's features again.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDisconnect}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Disconnect
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </DashboardLayout>
+  );
+}
