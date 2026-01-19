@@ -8,6 +8,38 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
 };
 
+// ============== AES-256-GCM Encryption ==============
+async function encryptCredentials(plaintext: string): Promise<string> {
+  const encryptionKey = Deno.env.get('ENCRYPTION_KEY');
+  if (!encryptionKey) {
+    throw new Error('ENCRYPTION_KEY environment variable is not set');
+  }
+
+  const encoder = new TextEncoder();
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const keyData = Uint8Array.from(atob(encryptionKey), c => c.charCodeAt(0));
+  
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    keyData,
+    { name: "AES-GCM" },
+    false,
+    ["encrypt"]
+  );
+  
+  const encryptedBuffer = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    cryptoKey,
+    encoder.encode(plaintext)
+  );
+  
+  const ivBase64 = btoa(String.fromCharCode(...iv));
+  const encryptedBase64 = btoa(String.fromCharCode(...new Uint8Array(encryptedBuffer)));
+  
+  return `${ivBase64}:${encryptedBase64}`;
+}
+// ====================================================
+
 // Rate limiting
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
 const RATE_LIMIT_MAX = 100;
@@ -31,7 +63,6 @@ function checkRateLimit(clientId: string): boolean {
 }
 
 // Flexible schema for platform integration data
-// Accepts the full nested credentials structure from n8n workflow
 const platformIntegrationSchema = z.object({
   user_id: z.string().uuid('Invalid user_id format'),
   platform_name: z.string().min(1, 'Platform name is required'),
@@ -50,7 +81,6 @@ const platformIntegrationSchema = z.object({
       company_id: z.string().optional(),
       company_logo: z.string().nullable().optional(),
     })).optional(),
-    // Allow additional fields for other platforms
   }).passthrough().refine(
     (val) => JSON.stringify(val).length <= 50000,
     { message: 'Credentials object too large' }
@@ -88,12 +118,11 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-    // Create service client for database operations
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body = await req.json();
     
-    console.log('Received payload:', JSON.stringify(body, null, 2));
+    console.log('Received payload for platform:', body.platform_name);
 
     // Validate input data
     const validationResult = platformIntegrationSchema.safeParse(body);
@@ -114,16 +143,18 @@ serve(async (req) => {
       credentials_keys: Object.keys(credentials)
     });
 
-    // Upsert the platform integration with the full credentials JSON
-    // Set credentials_encrypted: true to SKIP the encryption trigger
-    // This stores the plain JSON structure as-is
+    // Encrypt credentials using AES-256-GCM
+    const encryptedCredentials = await encryptCredentials(JSON.stringify(credentials));
+    console.log('Credentials encrypted successfully');
+
+    // Upsert the platform integration with encrypted credentials
     const { data, error } = await supabase
       .from('platform_integrations')
       .upsert({
         user_id,
         platform_name,
-        credentials, // Store the full nested credentials object as plain JSON
-        credentials_encrypted: true, // Set true to bypass encryption trigger
+        credentials: encryptedCredentials, // Store encrypted string
+        credentials_encrypted: true,
         status,
         updated_at: new Date().toISOString()
       }, {
@@ -145,11 +176,11 @@ serve(async (req) => {
       user_id: data.user_id,
       platform_name: data.platform_name,
       status: data.status,
-      credentials_encrypted: data.credentials_encrypted
+      credentials_encrypted: true
     });
 
     return new Response(
-      JSON.stringify({ success: true, data }),
+      JSON.stringify({ success: true, data: { ...data, credentials: '[ENCRYPTED]' } }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {

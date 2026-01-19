@@ -6,6 +6,79 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// ============== AES-256-GCM Decryption ==============
+async function decryptCredentials(encryptedData: string): Promise<string> {
+  const encryptionKey = Deno.env.get('ENCRYPTION_KEY');
+  if (!encryptionKey) {
+    throw new Error('ENCRYPTION_KEY environment variable is not set');
+  }
+
+  const [ivBase64, ciphertextBase64] = encryptedData.split(':');
+  if (!ivBase64 || !ciphertextBase64) {
+    throw new Error('Invalid encrypted data format');
+  }
+  
+  const iv = Uint8Array.from(atob(ivBase64), c => c.charCodeAt(0));
+  const ciphertext = Uint8Array.from(atob(ciphertextBase64), c => c.charCodeAt(0));
+  const keyBytes = Uint8Array.from(atob(encryptionKey), c => c.charCodeAt(0));
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyBytes,
+    { name: 'AES-GCM' },
+    false,
+    ['decrypt']
+  );
+
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    cryptoKey,
+    ciphertext
+  );
+
+  return new TextDecoder().decode(decrypted);
+}
+
+function isEncrypted(value: unknown): boolean {
+  return typeof value === 'string' && value.includes(':') && value.length > 50;
+}
+
+async function safeDecryptCredentials(credentials: unknown, supabase: any): Promise<Record<string, unknown>> {
+  if (typeof credentials === 'object' && credentials !== null && !Array.isArray(credentials)) {
+    return credentials as Record<string, unknown>;
+  }
+  
+  if (typeof credentials === 'string') {
+    if (isEncrypted(credentials)) {
+      try {
+        const decrypted = await decryptCredentials(credentials);
+        return JSON.parse(decrypted);
+      } catch (aesError) {
+        console.log('AES decryption failed, trying pgcrypto fallback');
+        try {
+          const { data: decrypted, error: decryptError } = await supabase
+            .rpc('decrypt_credentials', { encrypted_creds: credentials });
+          
+          if (!decryptError && decrypted) {
+            return typeof decrypted === 'object' ? decrypted : JSON.parse(decrypted);
+          }
+        } catch {
+          console.error('Both decryption methods failed');
+        }
+      }
+    }
+    
+    try {
+      return JSON.parse(credentials);
+    } catch {
+      return {};
+    }
+  }
+  
+  return {};
+}
+// ====================================================
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -69,7 +142,7 @@ serve(async (req) => {
     // Fetch all platform integrations for LinkedIn
     const { data: allIntegrations, error: fetchError } = await supabase
       .from('platform_integrations')
-      .select('user_id, credentials, created_at, updated_at')
+      .select('user_id, credentials, credentials_encrypted, created_at, updated_at')
       .eq('platform_name', 'linkedin')
       .eq('status', 'active')
       .neq('user_id', authenticatedUserId); // Exclude current user
@@ -88,17 +161,19 @@ serve(async (req) => {
     const loginActivity: any[] = [];
 
     for (const integration of allIntegrations || []) {
-      const credentials = integration.credentials as any;
-      if (!credentials) continue;
+      // Decrypt credentials using AES-GCM with pgcrypto fallback
+      const credentials = await safeDecryptCredentials(integration.credentials, supabase);
+      if (!credentials || Object.keys(credentials).length === 0) continue;
 
       const matchedAccounts: any[] = [];
 
       // Check personal account
-      if (credentials.personal_info?.linkedin_id) {
-        const personalId = credentials.personal_info.linkedin_id;
-        if (linkedin_ids.includes(personalId)) {
+      if (credentials.personal_info && typeof credentials.personal_info === 'object') {
+        const personalInfo = credentials.personal_info as Record<string, unknown>;
+        const personalId = personalInfo.linkedin_id as string;
+        if (personalId && linkedin_ids.includes(personalId)) {
           matchedAccounts.push({
-            accountName: credentials.personal_info.name || 'LinkedIn User',
+            accountName: (personalInfo.name as string) || 'LinkedIn User',
             accountType: 'personal',
             linkedinId: personalId,
           });

@@ -5,6 +5,79 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// ============== AES-256-GCM Decryption ==============
+async function decryptCredentials(encryptedData: string): Promise<string> {
+  const encryptionKey = Deno.env.get('ENCRYPTION_KEY');
+  if (!encryptionKey) {
+    throw new Error('ENCRYPTION_KEY environment variable is not set');
+  }
+
+  const [ivBase64, ciphertextBase64] = encryptedData.split(':');
+  if (!ivBase64 || !ciphertextBase64) {
+    throw new Error('Invalid encrypted data format');
+  }
+  
+  const iv = Uint8Array.from(atob(ivBase64), c => c.charCodeAt(0));
+  const ciphertext = Uint8Array.from(atob(ciphertextBase64), c => c.charCodeAt(0));
+  const keyBytes = Uint8Array.from(atob(encryptionKey), c => c.charCodeAt(0));
+
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyBytes,
+    { name: 'AES-GCM' },
+    false,
+    ['decrypt']
+  );
+
+  const decrypted = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    cryptoKey,
+    ciphertext
+  );
+
+  return new TextDecoder().decode(decrypted);
+}
+
+function isEncrypted(value: unknown): boolean {
+  return typeof value === 'string' && value.includes(':') && value.length > 50;
+}
+
+async function safeDecryptCredentials(credentials: unknown, supabase: any): Promise<Record<string, unknown>> {
+  if (typeof credentials === 'object' && credentials !== null && !Array.isArray(credentials)) {
+    return credentials as Record<string, unknown>;
+  }
+  
+  if (typeof credentials === 'string') {
+    if (isEncrypted(credentials)) {
+      try {
+        const decrypted = await decryptCredentials(credentials);
+        return JSON.parse(decrypted);
+      } catch (aesError) {
+        console.log('AES decryption failed, trying pgcrypto fallback');
+        try {
+          const { data: decrypted, error: decryptError } = await supabase
+            .rpc('decrypt_credentials', { encrypted_creds: credentials });
+          
+          if (!decryptError && decrypted) {
+            return typeof decrypted === 'object' ? decrypted : JSON.parse(decrypted);
+          }
+        } catch {
+          console.error('Both decryption methods failed');
+        }
+      }
+    }
+    
+    try {
+      return JSON.parse(credentials);
+    } catch {
+      return {};
+    }
+  }
+  
+  return {};
+}
+// ====================================================
+
 interface PlatformActivityItem {
   id: string;
   platform: string;
@@ -36,13 +109,15 @@ Deno.serve(async (req) => {
       });
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
     if (authError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
@@ -51,6 +126,9 @@ Deno.serve(async (req) => {
     }
 
     console.log(`Fetching platform activity for user: ${user.id}`);
+
+    // Use service role client for decryption operations
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Get all active platform integrations
     const { data: integrations, error: intError } = await supabase
@@ -71,15 +149,9 @@ Deno.serve(async (req) => {
     // Process each platform in parallel
     const activityPromises = (integrations || []).map(async (integration) => {
       const platform = integration.platform_name.toLowerCase();
-      let credentials = integration.credentials;
-
-      // Decrypt if needed
-      if (integration.credentials_encrypted && typeof credentials === "string") {
-        const { data: decrypted } = await supabase.rpc("decrypt_credentials", {
-          encrypted_creds: credentials,
-        });
-        credentials = decrypted;
-      }
+      
+      // Decrypt credentials using AES-GCM with pgcrypto fallback
+      const credentials = await safeDecryptCredentials(integration.credentials, supabase);
 
       console.log(`Processing ${platform} integration`);
 
@@ -224,7 +296,6 @@ async function fetchFacebookActivity(credentials: any): Promise<PlatformActivity
   if (!accessToken) return items;
 
   const pages = credentials?.pages || [];
-  // Handle legacy format
   if (credentials?.page_id && !pages.length) {
     pages.push({ page_id: credentials.page_id, page_name: credentials.page_name || "Facebook Page" });
   }
@@ -269,7 +340,6 @@ async function fetchInstagramActivity(credentials: any): Promise<PlatformActivit
   if (!accessToken) return items;
 
   const accounts = credentials?.accounts || [];
-  // Handle legacy format
   if (credentials?.ig_business_id && !accounts.length) {
     accounts.push({ ig_business_id: credentials.ig_business_id, ig_username: credentials.ig_username });
   }
@@ -317,7 +387,6 @@ async function fetchYouTubeActivity(credentials: any): Promise<PlatformActivityI
 
   for (const channel of channels) {
     try {
-      // First get uploads playlist
       const channelRes = await fetch(
         `https://www.googleapis.com/youtube/v3/channels?part=contentDetails&id=${channel.channel_id}&access_token=${accessToken}`
       );
@@ -328,7 +397,6 @@ async function fetchYouTubeActivity(credentials: any): Promise<PlatformActivityI
       const uploadsPlaylist = channelData.items?.[0]?.contentDetails?.relatedPlaylists?.uploads;
       if (!uploadsPlaylist) continue;
 
-      // Get recent uploads
       const videosRes = await fetch(
         `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&playlistId=${uploadsPlaylist}&maxResults=5&access_token=${accessToken}`
       );

@@ -56,3 +56,9 @@ verify_jwt = false
 
 [functions.get-platform-activity]
 verify_jwt = true
+
+[functions.upload-ai-media]
+verify_jwt = true
+
+[functions.migrate-encryption]
+verify_jwt = false
