@@ -62,3 +62,27 @@ verify_jwt = true
 
 [functions.migrate-encryption]
 verify_jwt = false
+
+[functions.proxy-validate-openai]
+verify_jwt = false
+
+[functions.proxy-linkedin-fetch-orgs]
+verify_jwt = false
+
+[functions.proxy-facebook-exchange-token]
+verify_jwt = false
+
+[functions.proxy-facebook-fetch-pages]
+verify_jwt = false
+
+[functions.proxy-instagram-fetch-accounts]
+verify_jwt = false
+
+[functions.proxy-youtube-refresh-token]
+verify_jwt = false
+
+[functions.proxy-youtube-fetch-channel]
+verify_jwt = false
+
+[functions.proxy-twitter-fetch-user]
+verify_jwt = false
