@@ -20,6 +20,7 @@ export type Database = {
           credentials: Json
           credentials_encrypted: boolean | null
           id: string
+          metadata: Json | null
           platform_name: string
           status: string
           updated_at: string
@@ -30,6 +31,7 @@ export type Database = {
           credentials: Json
           credentials_encrypted?: boolean | null
           id?: string
+          metadata?: Json | null
           platform_name: string
           status?: string
           updated_at?: string
@@ -40,6 +42,7 @@ export type Database = {
           credentials?: Json
           credentials_encrypted?: boolean | null
           id?: string
+          metadata?: Json | null
           platform_name?: string
           status?: string
           updated_at?: string
