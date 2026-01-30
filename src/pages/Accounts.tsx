@@ -500,20 +500,24 @@ export default function Accounts() {
         (key) => platformConfigs[key].name.toLowerCase() === platformDialog.platform?.toLowerCase(),
       ) || platformDialog.platform.toLowerCase();
 
-    // Step 1: Store credentials in the database first
+    // Step 1: Store credentials in the database first (will be encrypted by DB trigger or RLS)
     try {
-      const { error: upsertError } = await supabase.from("platform_integrations").upsert(
-        {
-          user_id: user.id,
-          platform_name: platformKey,
-          credentials: fields,
-          status: "active",
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: "user_id,platform_name",
-        },
-      );
+      const { data: integrationData, error: upsertError } = await supabase
+        .from("platform_integrations")
+        .upsert(
+          {
+            user_id: user.id,
+            platform_name: platformKey,
+            credentials: fields,
+            status: "active",
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: "user_id,platform_name",
+          },
+        )
+        .select("id")
+        .single();
 
       if (upsertError) {
         console.error("Error storing credentials:", upsertError);
@@ -523,7 +527,8 @@ export default function Accounts() {
 
       toast.success("Credentials stored successfully!");
 
-      // Step 2: Only after successful storage, call the n8n webhook
+      // Step 2: Only after successful storage, notify n8n webhook
+      // SECURITY: Only send user_id, integration_id, and platform_name - NO credentials
       try {
         const response = await fetch("https://n8n.srv1248804.hstgr.cloud/webhook/update-credentials", {
           method: "POST",
@@ -533,7 +538,7 @@ export default function Accounts() {
           body: JSON.stringify({
             platform_name: platformKey,
             user_id: user.id,
-            ...fields,
+            integration_id: integrationData?.id,
           }),
         });
 
