@@ -75,50 +75,50 @@ Deno.serve(async (req) => {
       return jsonResponse(errorResponse(data.error_description || data.error), 400);
     }
 
-    // Calculate expiration timestamps
-    const now = Date.now();
-    const accessExpiresAt = new Date(now + (data.expires_in * 1000)).toISOString();
-    
-    // LinkedIn may return a new refresh token with its own expiration
-    const refreshTokenExpiresAt = data.refresh_token_expires_in 
-      ? new Date(now + (data.refresh_token_expires_in * 1000)).toISOString()
-      : (credentials.refresh_token_expires_at as string); // Keep existing if not provided
+     // Calculate expiration timestamps
+     // Access token: reset to 60 days from now (each refresh extends it)
+     const now = new Date();
+     const accessExpiresAt = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString();
+     
+     // Refresh token: keep the original expiration date (365 days from initial connection)
+     // Don't change refresh_token_expires_at on refresh - it's based on connection time
+     const refreshTokenExpiresAt = credentials.refresh_token_expires_at as string;
 
-    // Update credentials with new access token
-    const updatedCredentials = {
-      ...credentials,
-      access_token: data.access_token,
-      expires_at: accessExpiresAt,
-      // Update refresh token if LinkedIn issues a new one
-      refresh_token: data.refresh_token || refreshToken,
-      refresh_token_expires_at: refreshTokenExpiresAt,
-    };
+     // Update credentials with new access token
+     const updatedCredentials = {
+       ...credentials,
+       access_token: data.access_token,
+       expires_at: accessExpiresAt,
+       // Update refresh token if LinkedIn issues a new one
+       refresh_token: data.refresh_token || refreshToken,
+       refresh_token_expires_at: refreshTokenExpiresAt,
+     };
 
-    const updateResult = await updatePlatformCredentials(supabase, integration.id, updatedCredentials);
-    
-    if (!updateResult.success) {
-      return jsonResponse(errorResponse("Failed to store refreshed token"), 500);
-    }
+     const updateResult = await updatePlatformCredentials(supabase, integration.id, updatedCredentials);
+     
+     if (!updateResult.success) {
+       return jsonResponse(errorResponse("Failed to store refreshed token"), 500);
+     }
 
-    // Also update metadata with expiration timestamps (for UI display)
-    const currentMetadata = (integration.metadata as Record<string, unknown>) || {};
-    const updatedMetadata = {
-      ...currentMetadata,
-      expires_at: accessExpiresAt,
-      access_token_expires_at: accessExpiresAt,
-      refresh_token_expires_at: refreshTokenExpiresAt,
-    };
-    
-    await updatePlatformMetadata(supabase, integration.id, updatedMetadata);
+     // Also update metadata with expiration timestamps (for UI display)
+     const currentMetadata = (integration.metadata as Record<string, unknown>) || {};
+     const updatedMetadata = {
+       ...currentMetadata,
+       expires_at: accessExpiresAt,
+       access_token_expires_at: accessExpiresAt,
+       refresh_token_expires_at: refreshTokenExpiresAt,
+     };
+     
+     await updatePlatformMetadata(supabase, integration.id, updatedMetadata);
 
-    console.log("[linkedin] Token refreshed successfully");
+     console.log("[linkedin] Token refreshed successfully");
 
-    // Return only success status - NO credentials
-    return jsonResponse(successResponse({
-      message: "Token refreshed and stored securely",
-      expires_in: data.expires_in,
-      expires_at: accessExpiresAt,
-    }));
+     // Return only success status - NO credentials
+     return jsonResponse(successResponse({
+       message: "Token refreshed and stored securely",
+       expires_in: 60 * 24 * 60 * 60, // 60 days in seconds
+       expires_at: accessExpiresAt,
+     }));
   } catch (error) {
     console.error("Error in proxy-linkedin-refresh-token:", error);
     const message = error instanceof Error ? error.message : "Unknown error";
