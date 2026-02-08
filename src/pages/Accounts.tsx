@@ -471,9 +471,20 @@ export default function Accounts() {
         }
 
         // Store long-lived token instead of short-lived
+        if (!exchangeData.access_token) {
+          toast.error("Token exchange failed: No access token received");
+          return;
+        }
+
+        const expiresIn = exchangeData.expires_in ? Number(exchangeData.expires_in) : 5184000; // Default to 60 days
+        if (isNaN(expiresIn)) {
+          toast.error("Token exchange failed: Invalid expiration time from Facebook");
+          return;
+        }
+
         credentialsToStore = {
           access_token: exchangeData.access_token,
-          expires_at: new Date(Date.now() + (exchangeData.expires_in * 1000)).toISOString(),
+          expires_at: new Date(Date.now() + (expiresIn * 1000)).toISOString(),
         };
 
         // Store app credentials in metadata (not encrypted, needed for future refreshes)
