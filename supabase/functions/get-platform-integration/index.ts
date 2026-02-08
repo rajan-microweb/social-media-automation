@@ -207,6 +207,15 @@ Deno.serve(async (req) => {
       return integration;
     }));
 
+    // If platform_name was specified, return single object; otherwise return array
+    if (platform_name) {
+      const singleResult = processedData.length > 0 ? processedData[0] : null;
+      return new Response(
+        JSON.stringify({ data: singleResult }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     return new Response(
       JSON.stringify({ data: processedData }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
