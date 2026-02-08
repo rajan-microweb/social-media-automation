@@ -240,12 +240,12 @@ export default function Accounts() {
               accountId: metadata.personal_info.linkedin_id,
               accountName: metadata.personal_info.name || "LinkedIn User",
               accountType: "personal",
-              avatarUrl: metadata.personal_info.picture || null,
+              avatarUrl: metadata.personal_info.picture || metadata.personal_info.avatar_url || null,
               platformIcon: config.icon,
               platformColor: config.color,
             });
           }
-          // Organizations from metadata
+          // Organizations from metadata (proxy function format)
           if (Array.isArray(metadata.organizations)) {
             metadata.organizations.forEach((org: any) => {
               accounts.push({
@@ -255,6 +255,21 @@ export default function Accounts() {
                 accountName: org.company_name || "Company",
                 accountType: "company",
                 avatarUrl: org.logo_url || null,
+                platformIcon: config.icon,
+                platformColor: config.color,
+              });
+            });
+          }
+          // Company info from metadata (alternative/legacy format)
+          if (Array.isArray(metadata.company_info)) {
+            metadata.company_info.forEach((company: any) => {
+              accounts.push({
+                id: `linkedin-company-${company.company_id}`,
+                platform: config.name,
+                accountId: company.company_id,
+                accountName: company.company_name || "Company",
+                accountType: "company",
+                avatarUrl: company.company_logo || company.logo_url || null,
                 platformIcon: config.icon,
                 platformColor: config.color,
               });

@@ -15,10 +15,17 @@ interface LinkedInMetadata {
     name: string;
     linkedin_id: string;
     picture?: string;
+    avatar_url?: string;
   };
   organizations?: Array<{
     company_name: string;
     company_id: string;
+    logo_url?: string;
+  }>;
+  company_info?: Array<{
+    company_name: string;
+    company_id: string;
+    company_logo?: string;
     logo_url?: string;
   }>;
 }
@@ -97,17 +104,30 @@ export function usePlatformAccounts(userId: string | undefined, selectedPlatform
               allAccounts.push({
                 id: meta.personal_info.linkedin_id,
                 name: meta.personal_info.name,
-                avatar: meta.personal_info.picture || null,
+                avatar: meta.personal_info.picture || meta.personal_info.avatar_url || null,
                 type: 'personal',
                 platform: 'linkedin'
               });
             }
+            // Organizations (proxy function format)
             if (meta.organizations) {
               meta.organizations.forEach(org => {
                 allAccounts.push({
                   id: org.company_id,
                   name: org.company_name,
                   avatar: org.logo_url || null,
+                  type: 'company',
+                  platform: 'linkedin'
+                });
+              });
+            }
+            // Company info (alternative/legacy format)
+            if (meta.company_info) {
+              meta.company_info.forEach(company => {
+                allAccounts.push({
+                  id: company.company_id,
+                  name: company.company_name,
+                  avatar: company.company_logo || company.logo_url || null,
                   type: 'company',
                   platform: 'linkedin'
                 });
