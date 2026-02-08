@@ -478,7 +478,7 @@ export default function Accounts() {
 
         const expiresIn = exchangeData.expires_in ? Number(exchangeData.expires_in) : 5184000; // Default to 60 days
         if (isNaN(expiresIn)) {
-          toast.error("Token exchange failed: Invalid expiration time from Facebook");
+          toast.error("Token exchange failed: Invalid expiration time from Meta API");
           return;
         }
 
