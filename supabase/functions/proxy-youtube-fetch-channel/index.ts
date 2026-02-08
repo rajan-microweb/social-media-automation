@@ -6,6 +6,7 @@ import {
   validateApiKey,
   createSupabaseClient,
   getDecryptedPlatformCredentials,
+  updatePlatformMetadata,
 } from "../_shared/encryption.ts";
 
 Deno.serve(async (req) => {
@@ -28,17 +29,18 @@ Deno.serve(async (req) => {
 
     // Get decrypted credentials
     const supabase = createSupabaseClient();
-    const { credentials, error: credError } = await getDecryptedPlatformCredentials(
+    const { credentials, integration, error: credError } = await getDecryptedPlatformCredentials(
       supabase,
       user_id,
       "youtube"
     );
 
-    if (credError || !credentials) {
+    if (credError || !credentials || !integration) {
       return jsonResponse(errorResponse(credError || "YouTube integration not found"), 404);
     }
 
-    const accessToken = credentials.access_token as string;
+    // Support both snake_case and camelCase key formats
+    const accessToken = (credentials.access_token || credentials.accessToken) as string;
     if (!accessToken) {
       return jsonResponse(errorResponse("No access token found"), 400);
     }
@@ -81,6 +83,15 @@ Deno.serve(async (req) => {
     }));
 
     console.log(`[youtube] Found ${channels.length} channels`);
+
+    // Store channel details in metadata column
+    const metadata = {
+      channels,
+      last_synced: new Date().toISOString(),
+    };
+    
+    await updatePlatformMetadata(supabase, integration.id, metadata);
+    console.log("[youtube] Metadata updated with channel details");
 
     return jsonResponse(successResponse({ channels }));
   } catch (error) {

@@ -7,6 +7,7 @@ import {
   createSupabaseClient,
   getDecryptedPlatformCredentials,
   updatePlatformCredentials,
+  updatePlatformMetadata,
 } from "../_shared/encryption.ts";
 
 Deno.serve(async (req) => {
@@ -39,7 +40,8 @@ Deno.serve(async (req) => {
       return jsonResponse(errorResponse(credError || "Facebook integration not found"), 404);
     }
 
-    const accessToken = credentials.access_token as string;
+    // Support both snake_case and camelCase key formats
+    const accessToken = (credentials.access_token || credentials.accessToken) as string;
     if (!accessToken) {
       return jsonResponse(errorResponse("No access token found"), 400);
     }
@@ -78,6 +80,15 @@ Deno.serve(async (req) => {
     };
 
     await updatePlatformCredentials(supabase, integration.id, updatedCredentials);
+
+    // Store page details (non-sensitive) in metadata column
+    const metadata = {
+      pages,
+      last_synced: new Date().toISOString(),
+    };
+    
+    await updatePlatformMetadata(supabase, integration.id, metadata);
+    console.log("[facebook] Metadata updated with page details");
 
     // Return only non-sensitive page info - NO tokens
     return jsonResponse(successResponse({ pages }));

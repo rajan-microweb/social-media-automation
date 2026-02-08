@@ -326,3 +326,40 @@ export async function updatePlatformCredentials(
     return { success: false, error: message };
   }
 }
+
+/**
+ * Updates the metadata field of a platform integration
+ * Used to store non-sensitive platform account details (pages, channels, orgs)
+ * 
+ * @param supabase Supabase client instance
+ * @param integrationId The integration record ID
+ * @param metadata The metadata object to store
+ * @returns Success status and any error message
+ */
+export async function updatePlatformMetadata(
+  supabase: SupabaseClient,
+  integrationId: string,
+  metadata: Record<string, unknown>
+): Promise<{ success: boolean; error: string | null }> {
+  try {
+    const { error: updateError } = await supabase
+      .from("platform_integrations")
+      .update({
+        metadata,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", integrationId);
+
+    if (updateError) {
+      console.error("Failed to update metadata:", updateError.message);
+      return { success: false, error: updateError.message };
+    }
+
+    console.log("Platform metadata updated successfully");
+    return { success: true, error: null };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("Metadata update failed:", message);
+    return { success: false, error: message };
+  }
+}

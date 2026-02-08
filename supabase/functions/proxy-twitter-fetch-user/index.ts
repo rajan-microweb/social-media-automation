@@ -6,6 +6,7 @@ import {
   validateApiKey,
   createSupabaseClient,
   getDecryptedPlatformCredentials,
+  updatePlatformMetadata,
 } from "../_shared/encryption.ts";
 
 // ============= OAuth 1.0a Signature Generation =============
@@ -121,13 +122,13 @@ Deno.serve(async (req) => {
 
     // Get decrypted credentials
     const supabase = createSupabaseClient();
-    const { credentials, error: credError } = await getDecryptedPlatformCredentials(
+    const { credentials, integration, error: credError } = await getDecryptedPlatformCredentials(
       supabase,
       user_id,
       "twitter"
     );
 
-    if (credError || !credentials) {
+    if (credError || !credentials || !integration) {
       return jsonResponse(errorResponse(credError || "Twitter integration not found"), 404);
     }
 
@@ -199,17 +200,27 @@ Deno.serve(async (req) => {
 
     console.log("[twitter] User fetched:", twitterData.data?.username);
 
+    // Build user data object
+    const userData = {
+      id: twitterData.data?.id || null,
+      username: twitterData.data?.username || null,
+      name: twitterData.data?.name || null,
+      profile_image_url: twitterData.data?.profile_image_url || null,
+      description: twitterData.data?.description || null,
+      public_metrics: twitterData.data?.public_metrics || null,
+    };
+
+    // Store user details in metadata column
+    const metadata = {
+      user: userData,
+      last_synced: new Date().toISOString(),
+    };
+    
+    await updatePlatformMetadata(supabase, integration.id, metadata);
+    console.log("[twitter] Metadata updated with user details");
+
     // Return sanitized user data (no tokens)
-    return jsonResponse(successResponse({
-      user: {
-        id: twitterData.data?.id || null,
-        username: twitterData.data?.username || null,
-        name: twitterData.data?.name || null,
-        profile_image_url: twitterData.data?.profile_image_url || null,
-        description: twitterData.data?.description || null,
-        public_metrics: twitterData.data?.public_metrics || null,
-      }
-    }));
+    return jsonResponse(successResponse({ user: userData }));
   } catch (error) {
     console.error('Error in proxy-twitter-fetch-user:', error);
     const message = error instanceof Error ? error.message : "Unknown error";
