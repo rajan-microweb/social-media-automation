@@ -132,6 +132,10 @@ const updatePlatformIntegrationSchema = z.object({
         .record(z.unknown())
         .refine((val) => JSON.stringify(val).length <= 50000, { message: "Credentials object too large" })
         .optional(),
+      metadata: z
+        .record(z.unknown())
+        .refine((val) => JSON.stringify(val).length <= 100000, { message: "Metadata object too large" })
+        .optional(),
       status: z.enum(["active", "inactive", "expired"]).optional(),
     })
     .strict(),
@@ -228,6 +232,27 @@ Deno.serve(async (req) => {
     // Add status if provided
     if (updates.status) {
       updateData.status = updates.status;
+    }
+
+    // Add metadata if provided (merge with existing)
+    if (updates.metadata) {
+      const { data: existing, error: fetchError } = await supabase
+        .from("platform_integrations")
+        .select("metadata")
+        .eq("platform_name", platform_name)
+        .eq("user_id", user_id)
+        .single();
+
+      let existingMetadata: Record<string, unknown> = {};
+      if (existing?.metadata && typeof existing.metadata === 'object') {
+        existingMetadata = existing.metadata as Record<string, unknown>;
+      }
+
+      // Merge existing with new metadata (new takes precedence)
+      const mergedMetadata = { ...existingMetadata, ...updates.metadata };
+      updateData.metadata = mergedMetadata;
+      
+      console.info("Metadata merged successfully");
     }
 
     // Update only for provided user_id
