@@ -949,24 +949,41 @@ export default function Accounts() {
                               </div>
                             </div>
                           </CardHeader>
-                          <CardContent className="space-y-2">
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <span className={`h-2 w-2 rounded-full ${
-                                account.tokenExpiration?.needsReconnect 
-                                  ? "bg-destructive" 
-                                  : "bg-green-500"
-                              }`} />
-                              {account.tokenExpiration?.needsReconnect ? "Reconnect Required" : "Connected"}
-                            </div>
-                            {/* Show token expiration for LinkedIn */}
-                            {account.platform === "LinkedIn" && account.tokenExpiration && (
-                              <TokenExpirationBadge 
-                                expirationInfo={account.tokenExpiration}
-                                showAccessToken={true}
-                                showRefreshToken={true}
-                              />
-                            )}
-                          </CardContent>
+                           <CardContent className="space-y-3">
+                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                               <span className={`h-2 w-2 rounded-full ${
+                                 account.tokenExpiration?.needsReconnect 
+                                   ? "bg-destructive" 
+                                   : "bg-green-500"
+                               }`} />
+                               {account.tokenExpiration?.needsReconnect ? "Reconnect Required" : "Connected"}
+                             </div>
+                             
+                             {/* Show token expiration countdown prominently */}
+                             {account.platform === "LinkedIn" && account.tokenExpiration && (
+                               <div className="pt-2 border-t space-y-2">
+                                 {/* Access Token Countdown */}
+                                 {account.tokenExpiration.displayText.accessToken && (
+                                   <div className="text-sm">
+                                     <p className="text-muted-foreground text-xs font-medium">Access Token</p>
+                                     <p className={`font-semibold ${account.tokenExpiration.accessTokenStatus === 'expired' ? 'text-destructive' : account.tokenExpiration.accessTokenStatus === 'expiring' ? 'text-orange-500' : account.tokenExpiration.accessTokenStatus === 'warning' ? 'text-yellow-600' : 'text-green-600'}`}>
+                                       {account.tokenExpiration.displayText.accessToken}
+                                     </p>
+                                   </div>
+                                 )}
+                                 
+                                 {/* Refresh Token Countdown */}
+                                 {account.tokenExpiration.displayText.refreshToken && (
+                                   <div className="text-sm">
+                                     <p className="text-muted-foreground text-xs font-medium">Reconnect Required</p>
+                                     <p className={`font-semibold ${account.tokenExpiration.refreshTokenStatus === 'expired' ? 'text-destructive' : account.tokenExpiration.refreshTokenStatus === 'expiring' ? 'text-orange-500' : account.tokenExpiration.refreshTokenStatus === 'warning' ? 'text-yellow-600' : 'text-green-600'}`}>
+                                       {account.tokenExpiration.displayText.refreshToken}
+                                     </p>
+                                   </div>
+                                 )}
+                               </div>
+                             )}
+                           </CardContent>
                         </Card>
                       );
                     })}
