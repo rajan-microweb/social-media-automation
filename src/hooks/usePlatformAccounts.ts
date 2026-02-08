@@ -10,82 +10,53 @@ export interface PlatformAccount {
   platform: string;
 }
 
-interface LinkedInCredentials {
+interface LinkedInMetadata {
   personal_info?: {
     name: string;
-    avatar_url: string;
     linkedin_id: string;
+    picture?: string;
   };
-  company_info?: Array<{
+  organizations?: Array<{
     company_name: string;
     company_id: string;
-    company_logo: string;
+    logo_url?: string;
   }>;
 }
 
-interface FacebookCredentials {
-  personal_info?: {
-    name: string;
-    avatar_url: string;
-    user_id: string;
-  };
+interface FacebookMetadata {
   pages?: Array<{
     page_id: string;
     page_name: string;
-    avatar_url?: string;
+    picture_url?: string;
   }>;
-  // Legacy format
-  page_id?: string;
-  page_name?: string;
-  page_info?: {
-    avatar_url?: string;
-  };
 }
 
-interface InstagramCredentials {
+interface InstagramMetadata {
   accounts?: Array<{
-    ig_id: string;
+    ig_business_id: string;
     ig_username: string;
-    avatar_url?: string;
-    account_name?: string;
+    profile_picture_url?: string;
+    connected_page_id?: string;
+    connected_page_name?: string;
   }>;
-  // Legacy format
-  ig_business_id?: string;
-  ig_username?: string;
-  ig_avatar?: string;
 }
 
-interface YouTubeCredentials {
-  channel_info?: {
-    youtube_id: string;
-    name: string;
-    handle?: string;
-    avatar_url?: string;
-    subscriber_count?: string;
-  };
-  personal_info?: {
-    name: string;
-    avatar_url: string;
-    user_id: string;
-    channel_id?: string;
-    channel_name?: string;
-  };
+interface YouTubeMetadata {
   channels?: Array<{
     channel_id: string;
     channel_name: string;
-    avatar_url?: string;
+    thumbnail_url?: string;
+    subscriber_count?: string;
+    video_count?: string;
   }>;
-  // Legacy format
-  accessToken?: string;
-  clientId?: string;
 }
 
-interface TwitterCredentials {
-  personal_info?: {
-    user_id: string;
+interface TwitterMetadata {
+  user?: {
+    id: string;
     username: string;
     name?: string;
-    avatar_url?: string;
+    profile_image_url?: string;
   };
 }
 
@@ -104,7 +75,7 @@ export function usePlatformAccounts(userId: string | undefined, selectedPlatform
       try {
         const { data, error } = await supabase
           .from("platform_integrations")
-          .select("platform_name, credentials")
+          .select("platform_name, metadata")
           .eq("user_id", userId)
           .eq("status", "active")
           .in("platform_name", selectedPlatforms);
@@ -115,26 +86,28 @@ export function usePlatformAccounts(userId: string | undefined, selectedPlatform
 
         data?.forEach((integration) => {
           const platformName = integration.platform_name.toLowerCase();
-          const credentials = integration.credentials as Record<string, unknown>;
+          const metadata = integration.metadata as Record<string, unknown>;
+
+          if (!metadata || Object.keys(metadata).length === 0) return;
 
           // --- LINKEDIN ---
           if (platformName === "linkedin") {
-            const creds = credentials as unknown as LinkedInCredentials;
-            if (creds.personal_info) {
+            const meta = metadata as unknown as LinkedInMetadata;
+            if (meta.personal_info) {
               allAccounts.push({
-                id: creds.personal_info.linkedin_id,
-                name: creds.personal_info.name,
-                avatar: creds.personal_info.avatar_url,
+                id: meta.personal_info.linkedin_id,
+                name: meta.personal_info.name,
+                avatar: meta.personal_info.picture || null,
                 type: 'personal',
                 platform: 'linkedin'
               });
             }
-            if (creds.company_info) {
-              creds.company_info.forEach(company => {
+            if (meta.organizations) {
+              meta.organizations.forEach(org => {
                 allAccounts.push({
-                  id: company.company_id,
-                  name: company.company_name,
-                  avatar: company.company_logo,
+                  id: org.company_id,
+                  name: org.company_name,
+                  avatar: org.logo_url || null,
                   type: 'company',
                   platform: 'linkedin'
                 });
@@ -144,123 +117,60 @@ export function usePlatformAccounts(userId: string | undefined, selectedPlatform
 
           // --- FACEBOOK ---
           if (platformName === "facebook") {
-            const creds = credentials as unknown as FacebookCredentials;
-            // Personal account
-            if (creds.personal_info) {
-              allAccounts.push({
-                id: creds.personal_info.user_id,
-                name: creds.personal_info.name,
-                avatar: creds.personal_info.avatar_url,
-                type: 'personal',
-                platform: 'facebook'
-              });
-            }
-            // Pages array (new format)
-            if (Array.isArray(creds.pages)) {
-              creds.pages.forEach(page => {
+            const meta = metadata as unknown as FacebookMetadata;
+            if (Array.isArray(meta.pages)) {
+              meta.pages.forEach(page => {
                 allAccounts.push({
                   id: page.page_id,
                   name: page.page_name,
-                  avatar: page.avatar_url || null,
+                  avatar: page.picture_url || null,
                   type: 'page',
                   platform: 'facebook'
                 });
-              });
-            }
-            // Legacy single page format
-            else if (creds.page_id) {
-              allAccounts.push({
-                id: creds.page_id,
-                name: creds.page_name || "Facebook Page",
-                avatar: creds.page_info?.avatar_url || null,
-                type: 'page',
-                platform: 'facebook'
               });
             }
           }
 
           // --- INSTAGRAM ---
           if (platformName === "instagram") {
-            const creds = credentials as unknown as InstagramCredentials;
-            // Accounts array - use ig_id as the account identifier
-            if (Array.isArray(creds.accounts)) {
-              creds.accounts.forEach(account => {
+            const meta = metadata as unknown as InstagramMetadata;
+            if (Array.isArray(meta.accounts)) {
+              meta.accounts.forEach(account => {
                 allAccounts.push({
-                  id: account.ig_id,
-                  name: account.account_name || `@${account.ig_username}`,
-                  avatar: account.avatar_url || null,
+                  id: account.ig_business_id,
+                  name: `@${account.ig_username}`,
+                  avatar: account.profile_picture_url || null,
                   type: 'personal',
                   platform: 'instagram'
                 });
-              });
-            }
-            // Legacy single account format
-            else if (creds.ig_business_id) {
-              allAccounts.push({
-                id: creds.ig_business_id,
-                name: `@${creds.ig_username}`,
-                avatar: creds.ig_avatar || null,
-                type: 'personal',
-                platform: 'instagram'
               });
             }
           }
 
           // --- YOUTUBE ---
           if (platformName === "youtube") {
-            const creds = credentials as unknown as YouTubeCredentials;
-            // channel_info format (from n8n webhook)
-            if (creds.channel_info) {
-              allAccounts.push({
-                id: creds.channel_info.youtube_id,
-                name: creds.channel_info.name || creds.channel_info.handle || 'YouTube Channel',
-                avatar: creds.channel_info.avatar_url || null,
-                type: 'channel',
-                platform: 'youtube'
-              });
-            }
-            // Personal account (alternative format)
-            else if (creds.personal_info) {
-              allAccounts.push({
-                id: creds.personal_info.user_id || creds.personal_info.channel_id || 'yt-personal',
-                name: creds.personal_info.name || creds.personal_info.channel_name || 'YouTube Account',
-                avatar: creds.personal_info.avatar_url || null,
-                type: 'personal',
-                platform: 'youtube'
-              });
-            }
-            // Channels array
-            if (Array.isArray(creds.channels)) {
-              creds.channels.forEach(channel => {
+            const meta = metadata as unknown as YouTubeMetadata;
+            if (Array.isArray(meta.channels)) {
+              meta.channels.forEach(channel => {
                 allAccounts.push({
                   id: channel.channel_id,
                   name: channel.channel_name,
-                  avatar: channel.avatar_url || null,
+                  avatar: channel.thumbnail_url || null,
                   type: 'channel',
                   platform: 'youtube'
                 });
-              });
-            }
-            // Legacy format - just tokens stored
-            if (!creds.channel_info && !creds.personal_info && !creds.channels && (creds.accessToken || creds.clientId)) {
-              allAccounts.push({
-                id: creds.clientId || 'youtube-legacy',
-                name: 'YouTube Account',
-                avatar: null,
-                type: 'channel',
-                platform: 'youtube'
               });
             }
           }
 
           // --- TWITTER ---
           if (platformName === "twitter") {
-            const creds = credentials as unknown as TwitterCredentials;
-            if (creds.personal_info) {
+            const meta = metadata as unknown as TwitterMetadata;
+            if (meta.user) {
               allAccounts.push({
-                id: creds.personal_info.user_id,
-                name: creds.personal_info.name || `@${creds.personal_info.username}`,
-                avatar: creds.personal_info.avatar_url || null,
+                id: meta.user.id,
+                name: meta.user.name || `@${meta.user.username}`,
+                avatar: meta.user.profile_image_url || null,
                 type: 'personal',
                 platform: 'twitter'
               });

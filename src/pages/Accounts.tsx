@@ -193,7 +193,7 @@ export default function Accounts() {
 
     const { data, error } = await supabase
       .from("platform_integrations")
-      .select("id, platform_name, credentials")
+      .select("id, platform_name, credentials, metadata")
       .eq("user_id", user.id)
       .eq("status", "active");
 
@@ -211,237 +211,152 @@ export default function Accounts() {
         const config = platformConfigs[platformName];
         if (!config) return;
 
+        const metadata = integration.metadata as any;
         const credentials = integration.credentials as any;
-        if (!credentials) return;
 
         // --- HANDLE OPENAI ---
         if (platformName === "openai") {
-          const orgName = credentials.organizations?.[0]?.org_title;
+          const orgName = credentials?.organizations?.[0]?.org_title;
           accounts.push({
             id: `openai-${integration.id}`,
             platform: config.name,
-            accountId: credentials.masked_key || "sk-...****",
-            // Use Org Name if available, else standard name
+            accountId: credentials?.masked_key || "sk-...****",
             accountName: orgName ? `OpenAI (${orgName})` : "OpenAI API",
             accountType: "personal",
-            avatarUrl: credentials.personal_info?.avatar_url || null,
+            avatarUrl: null,
             platformIcon: config.icon,
             platformColor: config.color,
           });
           return;
         }
 
-        // --- HANDLE INSTAGRAM (like LinkedIn: personal + accounts array) ---
-        if (platformName === "instagram") {
-          // Personal account
-          if (credentials.personal_info) {
+        // --- HANDLE LINKEDIN (from metadata) ---
+        if (platformName === "linkedin" && metadata) {
+          // Personal info from metadata
+          if (metadata.personal_info) {
             accounts.push({
-              id: `ig-personal-${credentials.personal_info.ig_business_id || credentials.personal_info.user_id}`,
+              id: `linkedin-personal-${metadata.personal_info.linkedin_id}`,
               platform: config.name,
-              accountId: credentials.personal_info.ig_business_id || credentials.personal_info.user_id,
-              accountName: credentials.personal_info.ig_username
-                ? `@${credentials.personal_info.ig_username}`
-                : "Instagram User",
+              accountId: metadata.personal_info.linkedin_id,
+              accountName: metadata.personal_info.name || "LinkedIn User",
               accountType: "personal",
-              avatarUrl: credentials.personal_info.ig_avatar || credentials.personal_info.avatar_url || null,
+              avatarUrl: metadata.personal_info.picture || null,
               platformIcon: config.icon,
               platformColor: config.color,
             });
           }
-          // Multiple accounts array
-          if (Array.isArray(credentials.accounts)) {
-            credentials.accounts.forEach((account: any) => {
+          // Organizations from metadata
+          if (Array.isArray(metadata.organizations)) {
+            metadata.organizations.forEach((org: any) => {
               accounts.push({
-                id: `ig-account-${account.ig_business_id}`,
+                id: `linkedin-company-${org.company_id}`,
                 platform: config.name,
-                accountId: account.ig_business_id,
-                accountName: account.ig_username ? `@${account.ig_username}` : "Instagram Account",
+                accountId: org.company_id,
+                accountName: org.company_name || "Company",
                 accountType: "company",
-                avatarUrl: account.ig_avatar || null,
+                avatarUrl: org.logo_url || null,
                 platformIcon: config.icon,
                 platformColor: config.color,
               });
             });
           }
-          // Legacy single account format
-          if (!credentials.personal_info && !credentials.accounts && credentials.ig_username) {
-            accounts.push({
-              id: `ig-${credentials.ig_business_id}`,
-              platform: config.name,
-              accountId: credentials.ig_business_id,
-              accountName: `@${credentials.ig_username}`,
-              accountType: "personal",
-              avatarUrl: credentials.ig_avatar || null,
-              platformIcon: config.icon,
-              platformColor: config.color,
-            });
-          }
         }
 
-        // --- HANDLE FACEBOOK (like LinkedIn: personal + pages array) ---
-        if (platformName === "facebook") {
-          // Personal account
-          if (credentials.personal_info) {
-            accounts.push({
-              id: `fb-personal-${credentials.personal_info.user_id}`,
-              platform: config.name,
-              accountId: credentials.personal_info.user_id,
-              accountName: credentials.personal_info.name || "Facebook User",
-              accountType: "personal",
-              avatarUrl: credentials.personal_info.avatar_url || null,
-              platformIcon: config.icon,
-              platformColor: config.color,
-            });
-          }
-          // Multiple pages array
-          if (Array.isArray(credentials.pages)) {
-            credentials.pages.forEach((page: any) => {
+        // --- HANDLE FACEBOOK (from metadata) ---
+        if (platformName === "facebook" && metadata) {
+          // Pages from metadata
+          if (Array.isArray(metadata.pages)) {
+            metadata.pages.forEach((page: any) => {
               accounts.push({
                 id: `fb-page-${page.page_id}`,
                 platform: config.name,
                 accountId: page.page_id,
                 accountName: page.page_name || "Facebook Page",
                 accountType: "company",
-                avatarUrl: page.avatar_url || null,
+                avatarUrl: page.picture_url || null,
                 platformIcon: config.icon,
                 platformColor: config.color,
               });
             });
           }
-          // Legacy single page format
-          if (!credentials.personal_info && !credentials.pages && credentials.page_id) {
-            accounts.push({
-              id: `fb-${credentials.page_id}`,
-              platform: config.name,
-              accountId: credentials.page_id,
-              accountName: credentials.page_name || "Facebook Page",
-              accountType: "company",
-              avatarUrl: credentials.page_info?.avatar_url || null,
-              platformIcon: config.icon,
-              platformColor: config.color,
+        }
+
+        // --- HANDLE INSTAGRAM (from metadata) ---
+        if (platformName === "instagram" && metadata) {
+          // Accounts from metadata
+          if (Array.isArray(metadata.accounts)) {
+            metadata.accounts.forEach((account: any) => {
+              accounts.push({
+                id: `ig-account-${account.ig_business_id}`,
+                platform: config.name,
+                accountId: account.ig_business_id,
+                accountName: account.ig_username ? `@${account.ig_username}` : "Instagram Account",
+                accountType: "company",
+                avatarUrl: account.profile_picture_url || null,
+                platformIcon: config.icon,
+                platformColor: config.color,
+              });
             });
           }
         }
 
-        // --- HANDLE YOUTUBE ---
-        if (platformName === "youtube") {
-          // channel_info format (from n8n webhook)
-          if (credentials.channel_info) {
-            accounts.push({
-              id: `yt-channel-${credentials.channel_info.youtube_id}`,
-              platform: config.name,
-              accountId: credentials.channel_info.youtube_id,
-              accountName: credentials.channel_info.name || credentials.channel_info.handle || "YouTube Channel",
-              accountType: "company",
-              avatarUrl: credentials.channel_info.avatar_url || null,
-              platformIcon: config.icon,
-              platformColor: config.color,
-            });
-          }
-          // Personal/channel info from credentials (alternative format)
-          else if (credentials.personal_info) {
-            accounts.push({
-              id: `yt-personal-${credentials.personal_info.user_id || credentials.personal_info.channel_id}`,
-              platform: config.name,
-              accountId: credentials.personal_info.user_id || credentials.personal_info.channel_id,
-              accountName: credentials.personal_info.name || credentials.personal_info.channel_name || "YouTube User",
-              accountType: "personal",
-              avatarUrl: credentials.personal_info.avatar_url || null,
-              platformIcon: config.icon,
-              platformColor: config.color,
-            });
-          }
-          // Multiple channels array
-          if (Array.isArray(credentials.channels)) {
-            credentials.channels.forEach((channel: any) => {
+        // --- HANDLE YOUTUBE (from metadata) ---
+        if (platformName === "youtube" && metadata) {
+          // Channels from metadata
+          if (Array.isArray(metadata.channels)) {
+            metadata.channels.forEach((channel: any) => {
               accounts.push({
                 id: `yt-channel-${channel.channel_id}`,
                 platform: config.name,
                 accountId: channel.channel_id,
                 accountName: channel.channel_name || "YouTube Channel",
                 accountType: "company",
-                avatarUrl: channel.avatar_url || null,
+                avatarUrl: channel.thumbnail_url || null,
                 platformIcon: config.icon,
                 platformColor: config.color,
               });
             });
           }
-          // Legacy/simple format - check if we have basic token info
-          if (
-            !credentials.channel_info &&
-            !credentials.personal_info &&
-            !credentials.channels &&
-            (credentials.accessToken || credentials.clientId)
-          ) {
+        }
+
+        // --- HANDLE TWITTER (from metadata) ---
+        if (platformName === "twitter" && metadata) {
+          // User from metadata
+          if (metadata.user) {
             accounts.push({
-              id: `yt-${integration.id}`,
+              id: `twitter-${metadata.user.id}`,
               platform: config.name,
-              accountId: credentials.clientId || "youtube-account",
-              accountName: "YouTube Account",
+              accountId: metadata.user.id,
+              accountName: metadata.user.name || `@${metadata.user.username}`,
               accountType: "personal",
-              avatarUrl: null,
+              avatarUrl: metadata.user.profile_image_url || null,
               platformIcon: config.icon,
               platformColor: config.color,
             });
           }
         }
 
-        // --- HANDLE TWITTER ---
-        if (platformName === "twitter") {
-          if (credentials.personal_info) {
-            accounts.push({
-              id: `twitter-${credentials.personal_info.user_id}`,
-              platform: config.name,
-              accountId: credentials.personal_info.user_id,
-              accountName: credentials.personal_info.name || `@${credentials.personal_info.username}`,
-              accountType: "personal",
-              avatarUrl: credentials.personal_info.avatar_url || null,
-              platformIcon: config.icon,
-              platformColor: config.color,
-            });
+        // --- FALLBACK: Show "Connected" if we have credentials but no metadata yet ---
+        if (!metadata || Object.keys(metadata).length === 0) {
+          // Only show a generic "connected" card if credentials exist
+          if (credentials && Object.keys(credentials).length > 0) {
+            // Check if we already added accounts for this platform
+            const hasAccountsForPlatform = accounts.some(
+              (acc) => acc.platform.toLowerCase() === platformName
+            );
+            if (!hasAccountsForPlatform) {
+              accounts.push({
+                id: `${platformName}-${integration.id}`,
+                platform: config.name,
+                accountId: integration.id,
+                accountName: `${config.name} (Syncing...)`,
+                accountType: "personal",
+                avatarUrl: null,
+                platformIcon: config.icon,
+                platformColor: config.color,
+              });
+            }
           }
-          // Legacy/simple format
-          if (!credentials.personal_info && (credentials.accessToken || credentials.apiKey)) {
-            accounts.push({
-              id: `twitter-${integration.id}`,
-              platform: config.name,
-              accountId: "twitter-account",
-              accountName: "Twitter/X Account",
-              accountType: "personal",
-              avatarUrl: null,
-              platformIcon: config.icon,
-              platformColor: config.color,
-            });
-          }
-        }
-
-        // --- HANDLE LINKEDIN & OTHERS ---
-        if (credentials.personal_info && platformName === "linkedin") {
-          accounts.push({
-            id: `${platformName}-personal-${credentials.personal_info.linkedin_id || credentials.personal_info.user_id}`,
-            platform: config.name,
-            accountId: credentials.personal_info.linkedin_id || credentials.personal_info.user_id,
-            accountName: credentials.personal_info.name || `${config.name} User`,
-            accountType: "personal",
-            avatarUrl: credentials.personal_info.avatar_url || null,
-            platformIcon: config.icon,
-            platformColor: config.color,
-          });
-        }
-
-        if (Array.isArray(credentials.company_info)) {
-          credentials.company_info.forEach((company: any) => {
-            accounts.push({
-              id: `${platformName}-company-${company.company_id || company.page_id}`,
-              platform: config.name,
-              accountId: company.company_id || company.page_id,
-              accountName: company.company_name || company.page_name || "Company",
-              accountType: "company",
-              avatarUrl: company.company_logo || company.page_logo || null,
-              platformIcon: config.icon,
-              platformColor: config.color,
-            });
-          });
         }
       });
 
