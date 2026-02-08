@@ -38,7 +38,8 @@ Deno.serve(async (req) => {
       return jsonResponse(errorResponse(credError || "LinkedIn integration not found"), 404);
     }
 
-    const accessToken = credentials.access_token as string;
+    // Support both snake_case and camelCase key formats
+    const accessToken = (credentials.access_token || credentials.accessToken) as string;
     if (!accessToken) {
       console.error("No access_token in credentials. Keys available:", Object.keys(credentials));
       return jsonResponse(errorResponse("No access token found"), 400);
