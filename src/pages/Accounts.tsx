@@ -430,22 +430,65 @@ export default function Accounts() {
         (key) => platformConfigs[key].name.toLowerCase() === platformDialog.platform?.toLowerCase(),
       ) || platformDialog.platform.toLowerCase();
 
+    let credentialsToStore: Record<string, any> = { ...fields };
+    let metadataToStore: Record<string, any> = {};
+
+    // For Facebook/Instagram: Exchange short-lived token for long-lived token
+    if ((platformKey === "facebook" || platformKey === "instagram") && fields.accessToken && fields.appId && fields.appSecret) {
+      toast.info("Exchanging for long-lived token...");
+      
+      try {
+        const exchangeUrl = `https://graph.facebook.com/v18.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${fields.appId}&client_secret=${fields.appSecret}&fb_exchange_token=${fields.accessToken}`;
+        
+        const response = await fetch(exchangeUrl);
+        const data = await response.json();
+
+        if (data.error) {
+          console.error("Token exchange error:", data.error);
+          toast.error(`Token exchange failed: ${data.error.message}`);
+          return;
+        }
+
+        // Store long-lived token instead of short-lived
+        credentialsToStore = {
+          access_token: data.access_token,
+          expires_at: new Date(Date.now() + (data.expires_in * 1000)).toISOString(),
+        };
+
+        // Store app credentials in metadata (not encrypted, needed for future refreshes)
+        metadataToStore = {
+          app_id: fields.appId,
+          app_secret: fields.appSecret,
+        };
+
+        toast.success("Long-lived token obtained successfully!");
+      } catch (exchangeError) {
+        console.error("Token exchange error:", exchangeError);
+        toast.error("Failed to exchange token. Please check your credentials.");
+        return;
+      }
+    }
+
     // Step 1: Store credentials in the database first (will be encrypted by DB trigger or RLS)
     try {
+      const upsertData: any = {
+        user_id: user.id,
+        platform_name: platformKey,
+        credentials: credentialsToStore,
+        status: "active",
+        updated_at: new Date().toISOString(),
+      };
+
+      // Only add metadata if we have it
+      if (Object.keys(metadataToStore).length > 0) {
+        upsertData.metadata = metadataToStore;
+      }
+
       const { data: integrationData, error: upsertError } = await supabase
         .from("platform_integrations")
-        .upsert(
-          {
-            user_id: user.id,
-            platform_name: platformKey,
-            credentials: fields,
-            status: "active",
-            updated_at: new Date().toISOString(),
-          },
-          {
-            onConflict: "user_id,platform_name",
-          },
-        )
+        .upsert(upsertData, {
+          onConflict: "user_id,platform_name",
+        })
         .select("id")
         .single();
 
