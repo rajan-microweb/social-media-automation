@@ -143,25 +143,39 @@ serve(async (req) => {
       credentials_keys: Object.keys(credentials)
     });
 
-    // Encrypt credentials using AES-256-GCM
-    const encryptedCredentials = await encryptCredentials(JSON.stringify(credentials));
-    console.log('Credentials encrypted successfully');
+     // Calculate expiration timestamps based on connection time (now)
+     const now = new Date();
+     const accessExpiresAt = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000).toISOString(); // 60 days
+     const refreshExpiresAt = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString(); // 365 days
 
-    // Upsert the platform integration with encrypted credentials
-    const { data, error } = await supabase
-      .from('platform_integrations')
-      .upsert({
-        user_id,
-        platform_name,
-        credentials: encryptedCredentials, // Store encrypted string
-        credentials_encrypted: true,
-        status,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'user_id,platform_name'
-      })
-      .select()
-      .single();
+     // Encrypt credentials using AES-256-GCM
+     const encryptedCredentials = await encryptCredentials(JSON.stringify(credentials));
+     console.log('Credentials encrypted successfully');
+
+     // Prepare metadata with expiration timestamps
+     const metadata = {
+       expires_at: accessExpiresAt,
+       access_token_expires_at: accessExpiresAt,
+       refresh_token_expires_at: refreshExpiresAt,
+       connected_at: now.toISOString(),
+     };
+
+     // Upsert the platform integration with encrypted credentials
+     const { data, error } = await supabase
+       .from('platform_integrations')
+       .upsert({
+         user_id,
+         platform_name,
+         credentials: encryptedCredentials, // Store encrypted string
+         credentials_encrypted: true,
+         metadata,
+         status,
+         updated_at: new Date().toISOString()
+       }, {
+         onConflict: 'user_id,platform_name'
+       })
+       .select()
+       .single();
 
     if (error) {
       console.error('Error storing integration:', error);
