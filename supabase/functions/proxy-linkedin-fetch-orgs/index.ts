@@ -35,10 +35,10 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get LinkedIn integration
+    // Get LinkedIn integration - check if encrypted
     const { data: integration, error: intError } = await supabase
       .from("platform_integrations")
-      .select("credentials")
+      .select("credentials, credentials_encrypted")
       .eq("user_id", user_id)
       .eq("platform_name", "linkedin")
       .eq("status", "active")
@@ -51,10 +51,39 @@ Deno.serve(async (req) => {
       });
     }
 
-    const credentials = await safeDecryptCredentials(integration.credentials);
+    let credentials: Record<string, unknown>;
+
+    // Handle pgcrypto-encrypted credentials (old format)
+    if (integration.credentials_encrypted === true) {
+      // For pgcrypto format, the credentials are stored as a JSON string containing the encrypted value
+      // We need to use the database function to decrypt
+      const encryptedValue = typeof integration.credentials === 'string' 
+        ? integration.credentials 
+        : JSON.stringify(integration.credentials).replace(/^"|"$/g, '');
+      
+      const { data: decryptedData, error: decryptError } = await supabase.rpc(
+        'decrypt_credentials',
+        { encrypted_creds: encryptedValue }
+      );
+      
+      if (decryptError || !decryptedData) {
+        console.error("Decryption error:", decryptError);
+        return new Response(JSON.stringify({ error: "Failed to decrypt credentials" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      
+      credentials = typeof decryptedData === 'string' ? JSON.parse(decryptedData) : decryptedData;
+    } else {
+      // Use the new AES-GCM decryption or plain JSON
+      credentials = await safeDecryptCredentials(integration.credentials);
+    }
+
     const accessToken = credentials.access_token as string;
 
     if (!accessToken) {
+      console.error("No access_token in credentials. Keys available:", Object.keys(credentials));
       return new Response(JSON.stringify({ error: "No access token found" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
