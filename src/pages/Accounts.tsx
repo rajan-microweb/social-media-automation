@@ -883,6 +883,27 @@ export default function Accounts() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {/* Show token expiration countdown next to disconnect */}
+                    {platformAccounts.length > 0 && platformAccounts[0].tokenExpiration?.hasExpirationData && (
+                      <div className="flex items-center gap-3 mr-2">
+                        {platformAccounts[0].tokenExpiration.displayText.accessToken && (
+                          <div className="text-xs text-right">
+                            <span className="text-muted-foreground">Token: </span>
+                            <span className={`font-semibold ${platformAccounts[0].tokenExpiration.accessTokenStatus === 'expired' ? 'text-destructive' : platformAccounts[0].tokenExpiration.accessTokenStatus === 'expiring' ? 'text-orange-500' : platformAccounts[0].tokenExpiration.accessTokenStatus === 'warning' ? 'text-yellow-600' : 'text-green-600'}`}>
+                              {platformAccounts[0].tokenExpiration.displayText.accessToken}
+                            </span>
+                          </div>
+                        )}
+                        {platformAccounts[0].tokenExpiration.displayText.refreshToken && (
+                          <div className="text-xs text-right">
+                            <span className="text-muted-foreground">Reconnect: </span>
+                            <span className={`font-semibold ${platformAccounts[0].tokenExpiration.refreshTokenStatus === 'expired' ? 'text-destructive' : platformAccounts[0].tokenExpiration.refreshTokenStatus === 'expiring' ? 'text-orange-500' : platformAccounts[0].tokenExpiration.refreshTokenStatus === 'warning' ? 'text-yellow-600' : 'text-green-600'}`}>
+                              {platformAccounts[0].tokenExpiration.displayText.refreshToken}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {platformAccounts.length > 0 && (
                       <Button variant="destructive" onClick={() => openDisconnectDialog(platformName)}>
                         Disconnect
@@ -949,41 +970,16 @@ export default function Accounts() {
                               </div>
                             </div>
                           </CardHeader>
-                           <CardContent className="space-y-3">
-                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                               <span className={`h-2 w-2 rounded-full ${
-                                 account.tokenExpiration?.needsReconnect 
-                                   ? "bg-destructive" 
-                                   : "bg-green-500"
-                               }`} />
-                               {account.tokenExpiration?.needsReconnect ? "Reconnect Required" : "Connected"}
-                             </div>
-                             
-                             {/* Show token expiration countdown prominently */}
-                             {account.platform === "LinkedIn" && account.tokenExpiration && (
-                               <div className="pt-2 border-t space-y-2">
-                                 {/* Access Token Countdown */}
-                                 {account.tokenExpiration.displayText.accessToken && (
-                                   <div className="text-sm">
-                                     <p className="text-muted-foreground text-xs font-medium">Access Token</p>
-                                     <p className={`font-semibold ${account.tokenExpiration.accessTokenStatus === 'expired' ? 'text-destructive' : account.tokenExpiration.accessTokenStatus === 'expiring' ? 'text-orange-500' : account.tokenExpiration.accessTokenStatus === 'warning' ? 'text-yellow-600' : 'text-green-600'}`}>
-                                       {account.tokenExpiration.displayText.accessToken}
-                                     </p>
-                                   </div>
-                                 )}
-                                 
-                                 {/* Refresh Token Countdown */}
-                                 {account.tokenExpiration.displayText.refreshToken && (
-                                   <div className="text-sm">
-                                     <p className="text-muted-foreground text-xs font-medium">Reconnect Required</p>
-                                     <p className={`font-semibold ${account.tokenExpiration.refreshTokenStatus === 'expired' ? 'text-destructive' : account.tokenExpiration.refreshTokenStatus === 'expiring' ? 'text-orange-500' : account.tokenExpiration.refreshTokenStatus === 'warning' ? 'text-yellow-600' : 'text-green-600'}`}>
-                                       {account.tokenExpiration.displayText.refreshToken}
-                                     </p>
-                                   </div>
-                                 )}
-                               </div>
-                             )}
-                           </CardContent>
+                          <CardContent>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <span className={`h-2 w-2 rounded-full ${
+                                account.tokenExpiration?.needsReconnect 
+                                  ? "bg-destructive" 
+                                  : "bg-green-500"
+                              }`} />
+                              {account.tokenExpiration?.needsReconnect ? "Reconnect Required" : "Connected"}
+                            </div>
+                          </CardContent>
                         </Card>
                       );
                     })}
