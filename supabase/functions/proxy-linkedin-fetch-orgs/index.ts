@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     if (profileRes.ok) {
       const profile = await profileRes.json();
       personalInfo = {
-        linkedin_id: profile.sub,
+        linkedin_id: `urn:li:person:${profile.sub}`,
         name: profile.name,
         email: profile.email,
         picture: profile.picture,
@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
         const org = element["organization~"];
         if (org) {
           organizations.push({
-            company_id: org.id,
+            company_id: `urn:li:organization:${org.id}`,
             company_name: org.localizedName,
             logo_url: org.logoV2?.["original~"]?.elements?.[0]?.identifiers?.[0]?.identifier || null,
           });
