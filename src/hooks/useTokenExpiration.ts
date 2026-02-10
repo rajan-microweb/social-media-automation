@@ -20,18 +20,11 @@ export interface TokenExpirationInfo {
  */
 export function calculateTokenExpiration(data: Record<string, unknown> | null): TokenExpirationInfo {
   const now = new Date();
-  
+
   // Extract expiration timestamps (support multiple formats)
-  const accessTokenExpiresAt = (
-    data?.expires_at || 
-    data?.expiresAt || 
-    data?.access_token_expires_at
-  ) as string | null;
-  
-  const refreshTokenExpiresAt = (
-    data?.refresh_token_expires_at || 
-    data?.refreshTokenExpiresAt
-  ) as string | null;
+  const accessTokenExpiresAt = (data?.expires_at || data?.expiresAt || data?.access_token_expires_at) as string | null;
+
+  const refreshTokenExpiresAt = (data?.refresh_token_expires_at || data?.refreshTokenExpiresAt) as string | null;
 
   let accessTokenDaysRemaining: number | null = null;
   let refreshTokenDaysRemaining: number | null = null;
@@ -43,7 +36,7 @@ export function calculateTokenExpiration(data: Record<string, unknown> | null): 
     const expiresDate = new Date(accessTokenExpiresAt);
     if (!isNaN(expiresDate.getTime())) {
       accessTokenDaysRemaining = Math.floor((expiresDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      
+
       if (accessTokenDaysRemaining <= 0) {
         accessTokenStatus = "expired";
       } else if (accessTokenDaysRemaining <= 7) {
@@ -61,7 +54,7 @@ export function calculateTokenExpiration(data: Record<string, unknown> | null): 
     const expiresDate = new Date(refreshTokenExpiresAt);
     if (!isNaN(expiresDate.getTime())) {
       refreshTokenDaysRemaining = Math.floor((expiresDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-      
+
       if (refreshTokenDaysRemaining <= 0) {
         refreshTokenStatus = "expired";
       } else if (refreshTokenDaysRemaining <= 7) {
@@ -76,13 +69,13 @@ export function calculateTokenExpiration(data: Record<string, unknown> | null): 
 
   // Needs reconnect if refresh token is expiring/expired
   const needsReconnect = refreshTokenStatus === "expired" || refreshTokenStatus === "expiring";
-  
+
   // Check if we have any expiration data
   const hasExpirationData = accessTokenExpiresAt !== null || refreshTokenExpiresAt !== null;
 
   // Generate display text
   const displayText = {
-    accessToken: formatTimeRemaining(accessTokenDaysRemaining, "Token expires in"),
+    accessToken: formatTimeRemaining(accessTokenDaysRemaining, "Expires in"),
     refreshToken: formatTimeRemaining(refreshTokenDaysRemaining, "Reconnect in"),
   };
 
@@ -104,7 +97,7 @@ export function calculateTokenExpiration(data: Record<string, unknown> | null): 
  */
 function formatTimeRemaining(days: number | null, prefix: string): string | null {
   if (days === null) return null;
-  
+
   if (days <= 0) {
     return "Expired";
   } else if (days === 1) {
@@ -139,7 +132,7 @@ export function useTokenExpiration(data: Record<string, unknown> | null): TokenE
  * Returns the appropriate badge variant based on token status
  */
 export function getTokenStatusBadgeVariant(
-  status: TokenExpirationInfo["accessTokenStatus"] | TokenExpirationInfo["refreshTokenStatus"]
+  status: TokenExpirationInfo["accessTokenStatus"] | TokenExpirationInfo["refreshTokenStatus"],
 ): "default" | "secondary" | "destructive" | "outline" {
   switch (status) {
     case "expired":
@@ -159,7 +152,7 @@ export function getTokenStatusBadgeVariant(
  * Returns the appropriate color class based on token status
  */
 export function getTokenStatusColor(
-  status: TokenExpirationInfo["accessTokenStatus"] | TokenExpirationInfo["refreshTokenStatus"]
+  status: TokenExpirationInfo["accessTokenStatus"] | TokenExpirationInfo["refreshTokenStatus"],
 ): string {
   switch (status) {
     case "expired":
