@@ -249,18 +249,26 @@ export async function getDecryptedPlatformCredentials(
   let credentials: Record<string, unknown>;
 
   try {
-    // Handle legacy pgcrypto-encrypted credentials (when credentials_encrypted === true)
-    if (integration.credentials_encrypted === true) {
+    // Extract the raw credential value
+    const rawValue = typeof integration.credentials === 'string' 
+      ? integration.credentials 
+      : JSON.stringify(integration.credentials).replace(/^"|"$/g, '');
+
+    // Detect AES-GCM format (iv:ciphertext) vs legacy pgcrypto
+    const looksLikeAesGcm = typeof rawValue === 'string' && isEncrypted(rawValue);
+
+    if (looksLikeAesGcm) {
+      // New AES-GCM encrypted credentials
+      console.log(`[${platformName}] Using AES-GCM decryption`);
+      const decrypted = await decryptCredentials(rawValue);
+      credentials = JSON.parse(decrypted);
+    } else if (integration.credentials_encrypted === true) {
+      // Legacy pgcrypto-encrypted credentials
       console.log(`[${platformName}] Using legacy pgcrypto decryption via RPC`);
-      
-      // For pgcrypto format, extract the encrypted value
-      const encryptedValue = typeof integration.credentials === 'string' 
-        ? integration.credentials 
-        : JSON.stringify(integration.credentials).replace(/^"|"$/g, '');
       
       const { data: decryptedData, error: decryptError } = await supabase.rpc(
         'decrypt_credentials',
-        { encrypted_creds: encryptedValue }
+        { encrypted_creds: rawValue }
       );
       
       if (decryptError || !decryptedData) {
@@ -270,8 +278,8 @@ export async function getDecryptedPlatformCredentials(
       
       credentials = typeof decryptedData === 'string' ? JSON.parse(decryptedData) : decryptedData;
     } else {
-      // Use the new AES-GCM decryption or plain JSON
-      console.log(`[${platformName}] Using AES-GCM decryption or plain JSON`);
+      // Plain JSON credentials
+      console.log(`[${platformName}] Using plain JSON credentials`);
       credentials = await safeDecryptCredentials(integration.credentials);
     }
 
