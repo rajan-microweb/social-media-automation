@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
       return jsonResponse(errorResponse(pagesData.error.message), 400);
     }
 
-    // Store page tokens for future use
+    // Store page tokens for future use - map tokens by page_name
     const pageTokens: Record<string, string> = {};
     
     // For each page, get linked Instagram business account
@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
 
     for (const page of pagesData.data || []) {
       // Store page token
-      pageTokens[page.id] = page.access_token;
+      pageTokens[page.name] = page.access_token;
       
       console.log(`[instagram] Checking page: ${page.name}`);
       const igResponse = await fetch(
