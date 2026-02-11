@@ -11,7 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Sparkles } from "lucide-react";
+import { Sparkles, AlertCircle } from "lucide-react";
+import { getImageAspectRatio, validateInstagramAspectRatio } from "@/lib/imageUtils";
 import { AiPromptModal } from "@/components/AiPromptModal";
 import {
   AlertDialog,
@@ -830,11 +831,37 @@ export default function EditPost() {
                       </a>
                     </div>
                   )}
+                  {/* Instagram Carousel Aspect Ratio Notice */}
+                  {typeOfPost === "carousel" && platforms.includes("instagram") && (
+                    <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-sm">
+                      <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                      <span className="text-amber-700 dark:text-amber-300">
+                        Instagram carousels require 1:1, 4:5, or 1.91:1 aspect ratio. Other formats will be rejected.
+                      </span>
+                    </div>
+                  )}
                   <Input
                     id="mediaFile"
                     type="file"
-                    onChange={(e) => {
-                      setMediaFile(e.target.files?.[0] || null);
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0] || null;
+                      
+                      // Validate aspect ratio for Instagram carousel
+                      if (file && typeOfPost === "carousel" && platforms.includes("instagram") && file.type.startsWith("image/")) {
+                        try {
+                          const ratio = await getImageAspectRatio(file);
+                          const validation = validateInstagramAspectRatio(ratio);
+                          if (!validation.valid) {
+                            toast.error(validation.message || "Invalid aspect ratio for Instagram carousel");
+                            e.target.value = "";
+                            return;
+                          }
+                        } catch (error) {
+                          console.error("Aspect ratio check error:", error);
+                        }
+                      }
+                      
+                      setMediaFile(file);
                       // Clear AI URLs when file is selected
                       setImageUrl("");
                       setVideoUrl("");

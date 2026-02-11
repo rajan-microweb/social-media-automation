@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { z } from "zod";
 import { Sparkles, X, Plus, Loader2, AlertCircle } from "lucide-react";
-import { convertFileToJpeg, isJpegFile, convertToJpeg } from "@/lib/imageUtils";
+import { convertFileToJpeg, isJpegFile, convertToJpeg, getImageAspectRatio, getImageAspectRatioFromUrl, validateInstagramAspectRatio } from "@/lib/imageUtils";
 import { AiPromptModal } from "@/components/AiPromptModal";
 import {
   AlertDialog,
@@ -437,14 +437,29 @@ export default function CreatePost() {
       return;
     }
 
-    // Check if Instagram carousel - need to convert non-JPEG files
-    const needsConversion = typeOfPost === "carousel" && platforms.includes("instagram");
+    // Check if Instagram carousel - need to validate aspect ratio and convert non-JPEG files
+    const isInstaCarousel = typeOfPost === "carousel" && platforms.includes("instagram");
 
-    if (needsConversion) {
+    if (isInstaCarousel) {
       setIsConverting(true);
       const convertedFiles: File[] = [];
 
       for (const file of files) {
+        // Validate aspect ratio first
+        try {
+          const ratio = await getImageAspectRatio(file);
+          const validation = validateInstagramAspectRatio(ratio);
+          if (!validation.valid) {
+            toast.error(`${file.name}: ${validation.message}`);
+            continue;
+          }
+        } catch (error) {
+          console.error("Aspect ratio check error:", error);
+          toast.error(`Failed to check aspect ratio for ${file.name}`);
+          continue;
+        }
+
+        // Then convert to JPEG if needed
         if (isJpegFile(file)) {
           convertedFiles.push(file);
         } else {
@@ -521,9 +536,22 @@ export default function CreatePost() {
       if (data.imageUrl) {
         let finalUrl = data.imageUrl;
 
-        // Convert to JPEG if Instagram carousel
-        const needsConversion = typeOfPost === "carousel" && platforms.includes("instagram");
-        if (needsConversion) {
+        // Validate aspect ratio for Instagram carousel
+        const isInstaCarousel = typeOfPost === "carousel" && platforms.includes("instagram");
+        if (isInstaCarousel) {
+          try {
+            const ratio = await getImageAspectRatioFromUrl(data.imageUrl);
+            const validation = validateInstagramAspectRatio(ratio);
+            if (!validation.valid) {
+              toast.error(validation.message || "Invalid aspect ratio for Instagram carousel");
+              return;
+            }
+          } catch (error) {
+            console.error("Aspect ratio check error:", error);
+            toast.warning("Could not verify aspect ratio");
+          }
+
+          // Convert to JPEG
           toast.info("Converting AI image to JPEG for Instagram...");
           try {
             const jpegBlob = await convertToJpeg(data.imageUrl);
@@ -1080,12 +1108,12 @@ export default function CreatePost() {
                     </p>
                   </div>
 
-                  {/* Instagram JPEG Notice */}
+                  {/* Instagram Carousel Notice */}
                   {isInstagramCarousel && (
                     <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-sm">
                       <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
                       <span className="text-amber-700 dark:text-amber-300">
-                        Instagram carousels only support JPEG images. Other formats will be automatically converted.
+                        Instagram carousels require 1:1, 4:5, or 1.91:1 aspect ratio. Other formats will be rejected. Images are automatically converted to JPEG.
                       </span>
                     </div>
                   )}
