@@ -104,3 +104,77 @@ export const convertUrlToJpegFile = async (
   const blob = await convertToJpeg(url, quality);
   return new File([blob], fileName, { type: 'image/jpeg' });
 };
+
+/**
+ * Instagram allowed aspect ratios for carousel posts
+ */
+const INSTAGRAM_ALLOWED_RATIOS = [
+  { name: '1:1 (Square)', value: 1.0 },
+  { name: '4:5 (Portrait)', value: 0.8 },
+  { name: '1.91:1 (Landscape)', value: 1.91 },
+];
+
+const ASPECT_RATIO_TOLERANCE = 0.03; // 3% tolerance
+
+/**
+ * Gets the aspect ratio of an image file
+ * @param file - Image file
+ * @returns Promise<number> - width/height ratio
+ */
+export const getImageAspectRatio = (file: File): Promise<number> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(img.src);
+      resolve(img.width / img.height);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(img.src);
+      reject(new Error('Failed to load image'));
+    };
+    img.src = URL.createObjectURL(file);
+  });
+};
+
+/**
+ * Gets the aspect ratio of an image from a URL
+ * @param url - Image URL
+ * @returns Promise<number> - width/height ratio
+ */
+export const getImageAspectRatioFromUrl = (url: string): Promise<number> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img.width / img.height);
+    img.onerror = () => reject(new Error('Failed to load image'));
+    img.src = url;
+  });
+};
+
+/**
+ * Validates if an aspect ratio matches one of Instagram's allowed ratios
+ * @param ratio - The aspect ratio (width/height)
+ * @returns { valid: boolean, closestRatio: string, message?: string }
+ */
+export const validateInstagramAspectRatio = (ratio: number): {
+  valid: boolean;
+  closestRatio: string;
+  message?: string;
+} => {
+  for (const allowed of INSTAGRAM_ALLOWED_RATIOS) {
+    const diff = Math.abs(ratio - allowed.value) / allowed.value;
+    if (diff <= ASPECT_RATIO_TOLERANCE) {
+      return { valid: true, closestRatio: allowed.name };
+    }
+  }
+
+  const ratioStr = ratio > 1
+    ? `${ratio.toFixed(2)}:1`
+    : `1:${(1 / ratio).toFixed(2)}`;
+
+  return {
+    valid: false,
+    closestRatio: '',
+    message: `Image ratio ${ratioStr} is not allowed for Instagram carousel. Use 1:1, 4:5, or 1.91:1.`,
+  };
+};
