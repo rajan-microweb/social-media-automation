@@ -1,88 +1,10 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
-};
-
-// ============== AES-256-GCM Decryption ==============
-async function decryptCredentials(encryptedData: string): Promise<string> {
-  const encryptionKey = Deno.env.get('ENCRYPTION_KEY');
-  if (!encryptionKey) {
-    throw new Error('ENCRYPTION_KEY environment variable is not set');
-  }
-
-  const [ivBase64, ciphertextBase64] = encryptedData.split(':');
-  if (!ivBase64 || !ciphertextBase64) {
-    throw new Error('Invalid encrypted data format');
-  }
-  
-  const iv = Uint8Array.from(atob(ivBase64), c => c.charCodeAt(0));
-  const ciphertext = Uint8Array.from(atob(ciphertextBase64), c => c.charCodeAt(0));
-  const keyBytes = Uint8Array.from(atob(encryptionKey), c => c.charCodeAt(0));
-
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyBytes,
-    { name: 'AES-GCM' },
-    false,
-    ['decrypt']
-  );
-
-  const decrypted = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
-    cryptoKey,
-    ciphertext
-  );
-
-  return new TextDecoder().decode(decrypted);
-}
-
-function isEncrypted(value: unknown): boolean {
-  return typeof value === 'string' && value.includes(':') && value.length > 50;
-}
-
-async function safeDecryptCredentials(credentials: unknown, supabase: any): Promise<Record<string, unknown>> {
-  // If already a JSON object, return as-is
-  if (typeof credentials === 'object' && credentials !== null && !Array.isArray(credentials)) {
-    return credentials as Record<string, unknown>;
-  }
-  
-  // If it's a string, try to determine the encryption format
-  if (typeof credentials === 'string') {
-    // Try AES-GCM format first (iv:ciphertext)
-    if (isEncrypted(credentials)) {
-      try {
-        const decrypted = await decryptCredentials(credentials);
-        return JSON.parse(decrypted);
-      } catch (aesError) {
-        console.log('AES decryption failed, trying pgcrypto fallback');
-        // Fallback to pgcrypto RPC if AES fails (for legacy data)
-        try {
-          const { data: decrypted, error: decryptError } = await supabase
-            .rpc('decrypt_credentials', { encrypted_creds: credentials });
-          
-          if (!decryptError && decrypted) {
-            return typeof decrypted === 'object' ? decrypted : JSON.parse(decrypted);
-          }
-        } catch {
-          console.error('Both decryption methods failed');
-        }
-      }
-    }
-    
-    // Try parsing as plain JSON
-    try {
-      return JSON.parse(credentials);
-    } catch {
-      return {};
-    }
-  }
-  
-  return {};
-}
-// ====================================================
+import {
+  corsHeaders,
+  validateApiKey,
+  createSupabaseClient,
+  getDecryptedPlatformCredentials,
+} from "../_shared/encryption.ts";
 
 // Rate limiting
 const rateLimitStore = new Map<string, { count: number; resetTime: number }>();
@@ -112,19 +34,16 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // API Key authentication
-    const apiKey = req.headers.get('x-api-key');
-    const expectedApiKey = Deno.env.get('N8N_API_KEY');
-
-    if (!apiKey || apiKey !== expectedApiKey) {
-      console.error('Invalid or missing API key');
+    // Validate API key
+    const authResult = validateApiKey(req);
+    if (!authResult.valid) {
       return new Response(
         JSON.stringify({ error: 'Unauthorized - Invalid API key' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Rate limiting by client IP
+    // Rate limiting
     const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown';
     if (!checkRateLimit(clientIp)) {
       return new Response(
@@ -133,10 +52,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createSupabaseClient();
 
     // Get parameters from URL query params or POST body
     const url = new URL(req.url);
@@ -175,18 +91,44 @@ Deno.serve(async (req) => {
 
     console.info('Fetching platform integrations:', { platform_name, user_id });
 
-    // Build query - filter by provided user_id
-    let query = supabase
+    // If a specific platform is requested, use the shared helper for proper decryption
+    if (platform_name) {
+      const { credentials, integration, error: credError } = await getDecryptedPlatformCredentials(
+        supabase,
+        user_id,
+        platform_name
+      );
+
+      if (credError || !credentials || !integration) {
+        return new Response(
+          JSON.stringify({ data: null }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Fetch the full record to include all fields
+      const { data: fullRecord } = await supabase
+        .from('platform_integrations')
+        .select('*')
+        .eq('id', integration.id)
+        .single();
+
+      const result = fullRecord
+        ? { ...fullRecord, credentials, credentials_encrypted: false }
+        : { credentials, metadata: integration.metadata };
+
+      return new Response(
+        JSON.stringify({ data: result }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // If no platform specified, fetch all active integrations and decrypt each
+    const { data, error } = await supabase
       .from('platform_integrations')
       .select('*')
       .eq('user_id', user_id)
       .eq('status', 'active');
-
-    if (platform_name) {
-      query = query.eq('platform_name', platform_name);
-    }
-
-    const { data, error } = await query;
 
     if (error) {
       console.error('Database error:', error);
@@ -198,23 +140,15 @@ Deno.serve(async (req) => {
 
     console.info(`Found ${data?.length || 0} platform integrations`);
 
-    // Process credentials - decrypt each integration
-    const processedData = await Promise.all((data || []).map(async (integration) => {
-      if (integration.credentials) {
-        const decryptedCredentials = await safeDecryptCredentials(integration.credentials, supabase);
-        return { ...integration, credentials: decryptedCredentials };
-      }
-      return integration;
-    }));
-
-    // If platform_name was specified, return single object; otherwise return array
-    if (platform_name) {
-      const singleResult = processedData.length > 0 ? processedData[0] : null;
-      return new Response(
-        JSON.stringify({ data: singleResult }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    // Decrypt each integration using the shared helper
+    const processedData = await Promise.all((data || []).map(async (record) => {
+      const { credentials } = await getDecryptedPlatformCredentials(
+        supabase,
+        user_id!,
+        record.platform_name
       );
-    }
+      return { ...record, credentials: credentials || {}, credentials_encrypted: false };
+    }));
 
     return new Response(
       JSON.stringify({ data: processedData }),
