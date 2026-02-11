@@ -73,8 +73,8 @@ export default function CreatePost() {
   const [alertMessage, setAlertMessage] = useState("");
   const [alertPlatform, setAlertPlatform] = useState("");
   const [textContent, setTextContent] = useState("");
-  const [articleTitle, setArticleTitle] = useState("");
-  const [articleDescription, setArticleDescription] = useState("");
+  const [postTitle, setPostTitle] = useState("");
+  const [postDescription, setPostDescription] = useState("");
   const [articleUrl, setArticleUrl] = useState("");
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [youtubeTitle, setYoutubeTitle] = useState("");
@@ -208,10 +208,10 @@ export default function CreatePost() {
   const handleAiGenerate = async (content: string) => {
     if (aiModalTarget === "textContent") {
       setTextContent(content);
-    } else if (aiModalTarget === "articleTitle") {
-      setArticleTitle(content);
-    } else if (aiModalTarget === "articleDescription") {
-      setArticleDescription(content);
+    } else if (aiModalTarget === "postTitle") {
+      setPostTitle(content);
+    } else if (aiModalTarget === "postDescription") {
+      setPostDescription(content);
     } else if (aiModalTarget === "youtubeTitle") {
       setYoutubeTitle(content);
     } else if (aiModalTarget === "youtubeDescription") {
@@ -336,10 +336,8 @@ export default function CreatePost() {
       // Build metadata object with platform+post-type specific fields
       const metadataObject: Record<string, string> = {};
 
-      // Article + LinkedIn specific fields
+      // Article URL stored in metadata
       if (typeOfPost === "article" && platforms.includes("linkedin")) {
-        if (articleTitle) metadataObject["title"] = articleTitle;
-        if (articleDescription) metadataObject["description"] = articleDescription;
         if (articleUrl) metadataObject["url"] = articleUrl;
       }
 
@@ -392,8 +390,8 @@ export default function CreatePost() {
         image: data.image || null,
         video: data.video || null,
         pdf: data.pdf || null,
-        title: "",
-        description: null,
+        title: postTitle || "Untitled",
+        description: postDescription || null,
         url: null,
         tags: data.tags.length > 0 ? data.tags : null,
         metadata: Object.keys(data.metadata).length > 0 ? data.metadata : null,
@@ -741,6 +739,60 @@ export default function CreatePost() {
                 </div>
               )}
 
+              {/* Post Title - Always visible when type is selected */}
+              {typeOfPost && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="postTitle">Post Title</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openAiModal("text", "postTitle")}
+                      className="h-8 gap-1"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      AI Generate
+                    </Button>
+                  </div>
+                  <Input
+                    id="postTitle"
+                    value={postTitle}
+                    onChange={(e) => setPostTitle(e.target.value)}
+                    maxLength={500}
+                    placeholder="Enter post title..."
+                  />
+                </div>
+              )}
+
+              {/* Post Description - Always visible when type is selected */}
+              {typeOfPost && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="postDescription">Post Description (Optional)</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openAiModal("text", "postDescription")}
+                      className="h-8 gap-1"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      AI Generate
+                    </Button>
+                  </div>
+                  <Textarea
+                    id="postDescription"
+                    value={postDescription}
+                    onChange={(e) => setPostDescription(e.target.value)}
+                    rows={3}
+                    maxLength={5000}
+                    placeholder="Enter post description..."
+                  />
+                  <div className="text-xs text-muted-foreground text-right">{postDescription.length}/5000</div>
+                </div>
+              )}
+
               {/* Text Content - Show for all except PDF */}
               {showTextContent && (
                 <div className="space-y-2">
@@ -773,27 +825,6 @@ export default function CreatePost() {
               {showArticleFields && (
                 <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
                   <h3 className="font-semibold">Article Fields</h3>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="articleTitle">Article Title (Optional)</Label>
-                    <Input
-                      id="articleTitle"
-                      value={articleTitle}
-                      onChange={(e) => setArticleTitle(e.target.value)}
-                      placeholder="Enter title..."
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="articleDescription">Article Description (Optional)</Label>
-                    <Textarea
-                      id="articleDescription"
-                      value={articleDescription}
-                      onChange={(e) => setArticleDescription(e.target.value)}
-                      rows={3}
-                      placeholder="Enter description..."
-                    />
-                  </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="articleUrl">Article URL (Optional)</Label>
@@ -1290,8 +1321,8 @@ export default function CreatePost() {
           apiKey: openaiApiKey,
           platforms: platforms,
           typeOfPost: typeOfPost,
-          title: articleTitle,
-          description: articleDescription,
+          title: postTitle,
+          description: postDescription,
         }}
       />
 

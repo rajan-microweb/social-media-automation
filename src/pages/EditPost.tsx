@@ -73,8 +73,8 @@ export default function EditPost() {
   const [alertMessage, setAlertMessage] = useState("");
   const [alertPlatform, setAlertPlatform] = useState("");
   const [textContent, setTextContent] = useState("");
-  const [articleTitle, setArticleTitle] = useState("");
-  const [articleDescription, setArticleDescription] = useState("");
+  const [postTitle, setPostTitle] = useState("");
+  const [postDescription, setPostDescription] = useState("");
   const [articleUrl, setArticleUrl] = useState("");
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [existingMediaUrl, setExistingMediaUrl] = useState("");
@@ -152,8 +152,8 @@ export default function EditPost() {
       setTypeOfPost(data.type_of_post || "");
       setPlatforms(data.platforms?.map((p: string) => p.toLowerCase()) || []);
       setTextContent(data.text || "");
-      setArticleTitle(data.title || "");
-      setArticleDescription(data.description || "");
+      setPostTitle(data.title || "");
+      setPostDescription(data.description || "");
       setArticleUrl(data.url || "");
       setStatus(data.status);
 
@@ -257,10 +257,10 @@ export default function EditPost() {
   const handleAiGenerate = async (content: string) => {
     if (aiModalTarget === "textContent") {
       setTextContent(content);
-    } else if (aiModalTarget === "articleTitle") {
-      setArticleTitle(content);
-    } else if (aiModalTarget === "articleDescription") {
-      setArticleDescription(content);
+    } else if (aiModalTarget === "postTitle") {
+      setPostTitle(content);
+    } else if (aiModalTarget === "postDescription") {
+      setPostDescription(content);
     } else if (aiModalTarget === "youtubeTitle") {
       setYoutubeTitle(content);
     } else if (aiModalTarget === "youtubeDescription") {
@@ -362,8 +362,8 @@ export default function EditPost() {
               : "",
         video: typeOfPost === "video" || typeOfPost === "shorts" ? uploadedUrl || "" : "",
         pdf: typeOfPost === "pdf" ? uploadedUrl || "" : "",
-        title: articleTitle || "",
-        description: articleDescription || undefined,
+        title: postTitle || "Untitled",
+        description: postDescription || undefined,
         url: articleUrl || undefined,
         tags: [
           youtubeTitle ? `youtube_title:${youtubeTitle}` : "",
@@ -602,6 +602,60 @@ export default function EditPost() {
                 </div>
               )}
 
+              {/* Post Title - Always visible */}
+              {typeOfPost && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="postTitle">Post Title</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openAiModal("text", "postTitle")}
+                      className="h-8 gap-1"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      AI Generate
+                    </Button>
+                  </div>
+                  <Input
+                    id="postTitle"
+                    value={postTitle}
+                    onChange={(e) => setPostTitle(e.target.value)}
+                    maxLength={500}
+                    placeholder="Enter post title..."
+                  />
+                </div>
+              )}
+
+              {/* Post Description - Always visible */}
+              {typeOfPost && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="postDescription">Post Description (Optional)</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openAiModal("text", "postDescription")}
+                      className="h-8 gap-1"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      AI Generate
+                    </Button>
+                  </div>
+                  <Textarea
+                    id="postDescription"
+                    value={postDescription}
+                    onChange={(e) => setPostDescription(e.target.value)}
+                    rows={3}
+                    maxLength={5000}
+                    placeholder="Enter post description..."
+                  />
+                  <div className="text-xs text-muted-foreground text-right">{postDescription.length}/5000</div>
+                </div>
+              )}
+
               {/* Text Content - Show for all except PDF */}
               {showTextContent && (
                 <div className="space-y-2">
@@ -630,37 +684,10 @@ export default function EditPost() {
                 </div>
               )}
 
-              {/* Article Fields - Show only for article type */}
+              {/* Article Fields - Show only for article type (URL + Thumbnail only) */}
               {showArticleFields && (
                 <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
                   <h3 className="font-semibold">Article Fields</h3>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="articleTitle">
-                      Article Title <span className="text-destructive">*</span>
-                    </Label>
-                    <Input
-                      id="articleTitle"
-                      value={articleTitle}
-                      onChange={(e) => setArticleTitle(e.target.value)}
-                      placeholder="Enter title..."
-                      required={showArticleFields}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="articleDescription">
-                      Article Description <span className="text-destructive">*</span>
-                    </Label>
-                    <Textarea
-                      id="articleDescription"
-                      value={articleDescription}
-                      onChange={(e) => setArticleDescription(e.target.value)}
-                      rows={3}
-                      placeholder="Enter description..."
-                      required={showArticleFields}
-                    />
-                  </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="articleUrl">
@@ -708,7 +735,7 @@ export default function EditPost() {
                         const file = e.target.files?.[0];
                         if (file) {
                           setArticleThumbnailFile(file);
-                          setArticleThumbnailUrl(""); // Clear AI URL if file is selected
+                          setArticleThumbnailUrl("");
                         }
                       }}
                     />
@@ -1052,8 +1079,8 @@ export default function EditPost() {
           apiKey: openaiApiKey,
           platforms: platforms,
           typeOfPost: typeOfPost,
-          title: articleTitle,
-          description: articleDescription,
+          title: postTitle,
+          description: postDescription,
         }}
       />
 
