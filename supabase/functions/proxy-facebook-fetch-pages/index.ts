@@ -58,10 +58,10 @@ Deno.serve(async (req) => {
       return jsonResponse(errorResponse(data.error.message), 400);
     }
 
-    // Store page tokens securely - map tokens by page_id
+    // Store page tokens securely - map tokens by page_name
     const pageTokens: Record<string, string> = {};
     const pages = (data.data || []).map((page: { id: string; name: string; access_token: string; picture?: { data?: { url?: string } } }) => {
-      pageTokens[page.id] = page.access_token;
+      pageTokens[page.name] = page.access_token;
       // Return only non-sensitive data
       return {
         page_id: page.id,
