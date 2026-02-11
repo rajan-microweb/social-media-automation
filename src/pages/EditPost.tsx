@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { z } from "zod";
 import { Sparkles, AlertCircle } from "lucide-react";
-import { getImageAspectRatio, validateInstagramAspectRatio } from "@/lib/imageUtils";
+import { convertFileToJpeg, isJpegFile } from "@/lib/imageUtils";
 import { AiPromptModal } from "@/components/AiPromptModal";
 import {
   AlertDialog,
@@ -849,10 +849,9 @@ export default function EditPost() {
                       // Validate aspect ratio for Instagram carousel
                       if (file && typeOfPost === "carousel" && platforms.includes("instagram") && file.type.startsWith("image/")) {
                         try {
-                          const ratio = await getImageAspectRatio(file);
-                          const validation = validateInstagramAspectRatio(ratio);
-                          if (!validation.valid) {
-                            toast.error(validation.message || "Invalid aspect ratio for Instagram carousel");
+                          // Convert non-JPEG to JPEG for Instagram carousel
+                          if (!isJpegFile(file)) {
+                            toast.info(`Converting ${file.name} to JPEG...`);
                             e.target.value = "";
                             return;
                           }

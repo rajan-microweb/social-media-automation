@@ -11,8 +11,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Sparkles, X, Plus, Loader2, AlertCircle } from "lucide-react";
-import { convertFileToJpeg, isJpegFile, convertToJpeg, getImageAspectRatio, getImageAspectRatioFromUrl, validateInstagramAspectRatio } from "@/lib/imageUtils";
+import { Sparkles, X, Plus, Loader2 } from "lucide-react";
+import { convertFileToJpeg, isJpegFile, convertToJpeg, convertUrlToJpegFile } from "@/lib/imageUtils";
 import { AiPromptModal } from "@/components/AiPromptModal";
 import {
   AlertDialog,
@@ -437,7 +437,7 @@ export default function CreatePost() {
       return;
     }
 
-    // Check if Instagram carousel - need to validate aspect ratio and convert non-JPEG files
+    // Check if Instagram carousel - convert non-JPEG files
     const isInstaCarousel = typeOfPost === "carousel" && platforms.includes("instagram");
 
     if (isInstaCarousel) {
@@ -445,21 +445,7 @@ export default function CreatePost() {
       const convertedFiles: File[] = [];
 
       for (const file of files) {
-        // Validate aspect ratio first
-        try {
-          const ratio = await getImageAspectRatio(file);
-          const validation = validateInstagramAspectRatio(ratio);
-          if (!validation.valid) {
-            toast.error(`${file.name}: ${validation.message}`);
-            continue;
-          }
-        } catch (error) {
-          console.error("Aspect ratio check error:", error);
-          toast.error(`Failed to check aspect ratio for ${file.name}`);
-          continue;
-        }
-
-        // Then convert to JPEG if needed
+        // Convert to JPEG if needed
         if (isJpegFile(file)) {
           convertedFiles.push(file);
         } else {
@@ -467,30 +453,19 @@ export default function CreatePost() {
           try {
             const jpegFile = await convertFileToJpeg(file);
             convertedFiles.push(jpegFile);
-          } catch (error) {
-            console.error("Conversion error:", error);
-            toast.error(`Failed to convert ${file.name}`);
-            continue;
+          } catch (convError) {
+            console.error("Conversion error:", convError);
+            toast.error(`Failed to convert ${file.name} to JPEG`);
           }
         }
       }
 
-      setCarouselFiles((prev) => [...prev, ...convertedFiles]);
+      setCarouselFiles([...carouselFiles, ...convertedFiles]);
       setIsConverting(false);
-      if (convertedFiles.length > 0) {
-        toast.success(`${convertedFiles.length} image(s) added`);
-      }
     } else {
-      setCarouselFiles((prev) => [...prev, ...files]);
+      // Non-Instagram carousel - just add files directly
+      setCarouselFiles([...carouselFiles, ...files]);
     }
-  };
-
-  const removeCarouselFile = (index: number) => {
-    setCarouselFiles(carouselFiles.filter((_, i) => i !== index));
-  };
-
-  const removeCarouselImage = (index: number) => {
-    setCarouselImages(carouselImages.filter((_, i) => i !== index));
   };
 
   const generateCarouselAiImage = async () => {
@@ -500,73 +475,54 @@ export default function CreatePost() {
     }
 
     if (!carouselAiPrompt.trim()) {
-      toast.error("Please enter a prompt for AI generation");
-      return;
-    }
-
-    const totalCount = carouselImages.length + carouselFiles.length;
-    if (totalCount >= 10) {
-      toast.error("Maximum 10 images reached");
+      toast.error("Please enter a prompt for AI image generation");
       return;
     }
 
     setCarouselGenerating(true);
 
     try {
-      const payload = {
-        userId: user?.id,
-        apiKey: openaiApiKey,
-        platforms: platforms,
-        typeOfPost: typeOfPost,
-        imagePrompt: carouselAiPrompt,
-      };
-
-      const response = await fetch("https://n8n.srv1248804.hstgr.cloud/webhook/ai-content-generator", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const response = await fetch(
+        "https://fcfdyivyjidzqjtanalq.supabase.co/functions/v1/upload-ai-media",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            imagePrompt: carouselAiPrompt,
+            userId: user?.id,
+            apiKey: openaiApiKey,
+            platforms: [platforms.includes("instagram") ? "instagram" : "general"],
+            typeOfPost: "carousel",
+          }),
+        }
+      );
 
       if (!response.ok) {
-        throw new Error("Failed to generate image");
+        throw new Error(`AI generation failed: ${response.statusText}`);
       }
 
       const data = await response.json();
 
       if (data.imageUrl) {
-        let finalUrl = data.imageUrl;
-
-        // Validate aspect ratio for Instagram carousel
+        // For Instagram carousel, convert AI-generated images to JPEG
         const isInstaCarousel = typeOfPost === "carousel" && platforms.includes("instagram");
+
         if (isInstaCarousel) {
           try {
-            const ratio = await getImageAspectRatioFromUrl(data.imageUrl);
-            const validation = validateInstagramAspectRatio(ratio);
-            if (!validation.valid) {
-              toast.error(validation.message || "Invalid aspect ratio for Instagram carousel");
-              return;
-            }
+            const jpegFile = await convertUrlToJpegFile(data.imageUrl, `carousel-${Date.now()}.jpg`);
+            setCarouselImages([...carouselImages, data.imageUrl]);
           } catch (error) {
-            console.error("Aspect ratio check error:", error);
-            toast.warning("Could not verify aspect ratio");
+            console.error("JPEG conversion error:", error);
+            toast.error("Failed to process AI-generated image");
           }
-
-          // Convert to JPEG
-          toast.info("Converting AI image to JPEG for Instagram...");
-          try {
-            const jpegBlob = await convertToJpeg(data.imageUrl);
-            finalUrl = URL.createObjectURL(jpegBlob);
-          } catch (convError) {
-            console.error("JPEG conversion error:", convError);
-            toast.warning("Could not convert to JPEG, using original format");
-          }
+        } else {
+          setCarouselImages([...carouselImages, data.imageUrl]);
         }
 
-        setCarouselImages([...carouselImages, finalUrl]);
-        setCarouselAiPrompt(""); // Clear prompt after successful generation
-        toast.success(`Image ${carouselImages.length + 1} generated successfully`);
+        setCarouselAiPrompt("");
+        toast.success("AI image added to carousel");
       } else {
-        throw new Error("Invalid response from AI generator");
+        toast.error("No image URL received from AI");
       }
     } catch (error: any) {
       console.error("AI generation error:", error);
@@ -578,16 +534,19 @@ export default function CreatePost() {
 
   const getTotalCarouselCount = () => carouselImages.length + carouselFiles.length;
 
-  // Check if Instagram carousel (requires JPEG only)
-  const isInstagramCarousel = typeOfPost === "carousel" && platforms.includes("instagram");
+  const removeCarouselImage = (index: number) => {
+    if (index < carouselImages.length) {
+      setCarouselImages(carouselImages.filter((_, i) => i !== index));
+    } else {
+      setCarouselFiles(carouselFiles.filter((_, i) => i !== index - carouselImages.length));
+    }
+  };
 
   // Field visibility logic
   const showTextContent = typeOfPost && typeOfPost !== "pdf";
   const showPdfTextContent = typeOfPost === "pdf";
   const showArticleFields = typeOfPost === "article";
-  const showMediaUpload =
-    typeOfPost && typeOfPost !== "onlyText" && typeOfPost !== "article" && typeOfPost !== "carousel";
-  const showCarouselUpload = typeOfPost === "carousel";
+  const showMediaUpload = typeOfPost && typeOfPost !== "onlyText" && typeOfPost !== "article";
   const showYoutubeFields = platforms.includes("youtube") && typeOfPost === "video";
   const showInstagramFields = platforms.includes("instagram");
   const showFacebookFields = platforms.includes("facebook");
@@ -614,717 +573,466 @@ export default function CreatePost() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Post Details</CardTitle>
+            <CardTitle>Post Type</CardTitle>
           </CardHeader>
           <CardContent>
+            <div className="grid grid-cols-2 gap-4">
+              {[
+                { value: "onlyText", label: "Text Only" },
+                { value: "image", label: "Image" },
+                { value: "carousel", label: "Carousel" },
+                { value: "video", label: "Video" },
+                { value: "shorts", label: "Shorts" },
+                { value: "article", label: "Article" },
+                { value: "pdf", label: "PDF" },
+              ].map((type) => (
+                <button
+                  key={type.value}
+                  onClick={() => setTypeOfPost(type.value)}
+                  className={`p-3 rounded-lg border-2 text-left transition-all ${
+                    typeOfPost === type.value
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-primary/50"
+                  }`}
+                >
+                  {type.label}
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {typeOfPost && (
+          <>
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Post Title - Always visible at top */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="postTitle">Post Title</Label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => openAiModal("text", "postTitle")}
-                    className="h-8 gap-1"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    AI Generate
-                  </Button>
-                </div>
-                <Input
-                  id="postTitle"
-                  value={postTitle}
-                  onChange={(e) => setPostTitle(e.target.value)}
-                  maxLength={500}
-                  placeholder="Enter post title..."
-                />
-              </div>
-
-              {/* Post Description - Always visible at top */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="postDescription">Post Description (Optional)</Label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => openAiModal("text", "postDescription")}
-                    className="h-8 gap-1"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    AI Generate
-                  </Button>
-                </div>
-                <Textarea
-                  id="postDescription"
-                  value={postDescription}
-                  onChange={(e) => setPostDescription(e.target.value)}
-                  rows={3}
-                  maxLength={5000}
-                  placeholder="Enter post description..."
-                />
-                <div className="text-xs text-muted-foreground text-right">{postDescription.length}/5000</div>
-              </div>
-
-              {/* Type of Post - Always visible */}
-              <div className="space-y-2">
-                <Label htmlFor="typeOfPost">
-                  Type of Post <span className="text-destructive">*</span>
-                </Label>
-                <Select value={typeOfPost} onValueChange={setTypeOfPost} required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="onlyText">Only Text</SelectItem>
-                    <SelectItem value="image">Image</SelectItem>
-                    <SelectItem value="carousel">Carousel (Multiple Images)</SelectItem>
-                    <SelectItem value="video">Video (landscape)</SelectItem>
-                    <SelectItem value="shorts">Reels/Shorts (portrait)</SelectItem>
-                    <SelectItem value="article">Article</SelectItem>
-                    <SelectItem value="pdf">PDF</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Platforms - Show when type is selected */}
-              {typeOfPost && (
-                <div className="space-y-2">
-                  <Label>
-                    Platforms <span className="text-destructive">*</span>
-                  </Label>
-                  <div className="flex flex-wrap gap-3">
-                    {availablePlatforms.map((platform) => {
-                      const isSelected = platforms.includes(platform.toLowerCase());
-                      const platformLower = platform.toLowerCase();
-
-                      const getPlatformIcon = () => {
-                        switch (platformLower) {
-                          case "facebook":
-                            return (
-                              <svg viewBox="0 0 24 24" className="w-8 h-8" fill="#1877F2">
-                                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
-                              </svg>
-                            );
-                          case "instagram":
-                            return (
-                              <svg viewBox="0 0 24 24" className="w-8 h-8">
-                                <defs>
-                                  <linearGradient id="instagram-gradient" x1="0%" y1="100%" x2="100%" y2="0%">
-                                    <stop offset="0%" stopColor="#FFDC80" />
-                                    <stop offset="25%" stopColor="#FCAF45" />
-                                    <stop offset="50%" stopColor="#F77737" />
-                                    <stop offset="75%" stopColor="#F56040" />
-                                    <stop offset="100%" stopColor="#FD1D1D" />
-                                  </linearGradient>
-                                  <linearGradient id="instagram-gradient-2" x1="0%" y1="100%" x2="100%" y2="0%">
-                                    <stop offset="0%" stopColor="#FFDC80" />
-                                    <stop offset="10%" stopColor="#FCAF45" />
-                                    <stop offset="30%" stopColor="#F77737" />
-                                    <stop offset="60%" stopColor="#C13584" />
-                                    <stop offset="100%" stopColor="#833AB4" />
-                                  </linearGradient>
-                                </defs>
-                                <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#instagram-gradient-2)" />
-                                <circle cx="12" cy="12" r="4" fill="none" stroke="white" strokeWidth="1.5" />
-                                <circle cx="17.5" cy="6.5" r="1.5" fill="white" />
-                              </svg>
-                            );
-                          case "linkedin":
-                            return (
-                              <svg viewBox="0 0 24 24" className="w-8 h-8" fill="#0A66C2">
-                                <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" />
-                              </svg>
-                            );
-                          case "youtube":
-                            return (
-                              <svg viewBox="0 0 24 24" className="w-8 h-8" fill="#FF0000">
-                                <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
-                              </svg>
-                            );
-                          case "twitter":
-                            return (
-                              <svg viewBox="0 0 24 24" className="w-8 h-8" fill="#000000">
-                                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                              </svg>
-                            );
-                          default:
-                            return null;
-                        }
-                      };
-
-                      return (
-                        <button
-                          key={platform}
-                          type="button"
-                          onClick={() => handlePlatformChange(platform, !isSelected)}
-                          className={`flex flex-col items-center justify-center p-4 rounded-lg border-2 transition-all min-w-[100px] ${
-                            isSelected
-                              ? "border-primary bg-primary/5 shadow-sm"
-                              : "border-border hover:border-muted-foreground/50 bg-card"
-                          }`}
-                        >
-                          {getPlatformIcon()}
-                          <span className="mt-2 text-sm font-medium text-foreground">{platform}</span>
-                        </button>
-                      );
-                    })}
+              {/* Platforms selection */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Select Platforms</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-wrap gap-4">
+                    {availablePlatforms.map((platform) => (
+                      <label key={platform} className="inline-flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          checked={platforms.includes(platform.toLowerCase())}
+                          onChange={(e) => handlePlatformChange(platform, e.target.checked)}
+                        />
+                        <span className="capitalize">{platform}</span>
+                      </label>
+                    ))}
                   </div>
-                </div>
-              )}
+                </CardContent>
+              </Card>
 
-              {/* Platform Account Selectors - Show for each selected platform */}
+              {/* Account selectors */}
               {showAccountSelectors && (
-                <div className="space-y-4">
-                  {platforms.includes("linkedin") && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Select Accounts</CardTitle>
+                  </CardHeader>
+                  <CardContent>
                     <PlatformAccountSelector
                       accounts={platformAccounts}
                       selectedAccountIds={selectedAccountIds}
-                      onAccountToggle={handleAccountToggle}
-                      loading={loadingPlatformAccounts}
-                      platform="linkedin"
+                      onToggle={handleAccountToggle}
                     />
-                  )}
-                  {platforms.includes("facebook") && (
-                    <PlatformAccountSelector
-                      accounts={platformAccounts}
-                      selectedAccountIds={selectedAccountIds}
-                      onAccountToggle={handleAccountToggle}
-                      loading={loadingPlatformAccounts}
-                      platform="facebook"
-                    />
-                  )}
-                  {platforms.includes("instagram") && (
-                    <PlatformAccountSelector
-                      accounts={platformAccounts}
-                      selectedAccountIds={selectedAccountIds}
-                      onAccountToggle={handleAccountToggle}
-                      loading={loadingPlatformAccounts}
-                      platform="instagram"
-                    />
-                  )}
-                  {platforms.includes("youtube") && (
-                    <PlatformAccountSelector
-                      accounts={platformAccounts}
-                      selectedAccountIds={selectedAccountIds}
-                      onAccountToggle={handleAccountToggle}
-                      loading={loadingPlatformAccounts}
-                      platform="youtube"
-                    />
-                  )}
-                  {platforms.includes("twitter") && (
-                    <PlatformAccountSelector
-                      accounts={platformAccounts}
-                      selectedAccountIds={selectedAccountIds}
-                      onAccountToggle={handleAccountToggle}
-                      loading={loadingPlatformAccounts}
-                      platform="twitter"
-                    />
-                  )}
-                </div>
+                  </CardContent>
+                </Card>
               )}
 
-              {/* Text Content - Show for all except PDF */}
-              {showTextContent && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="textContent">Text Content (Optional)</Label>
+              {/* Title and description */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Post Details</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="postTitle">Title</Label>
+                    <Input
+                      id="postTitle"
+                      value={postTitle}
+                      onChange={(e) => setPostTitle(e.target.value)}
+                      placeholder="Enter post title"
+                    />
                     <Button
-                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openAiModal("text", "postTitle")}
+                      className="mt-1"
+                    >
+                      <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
+                    </Button>
+                  </div>
+
+                  <div>
+                    <Label htmlFor="postDescription">Description</Label>
+                    <Textarea
+                      id="postDescription"
+                      value={postDescription}
+                      onChange={(e) => setPostDescription(e.target.value)}
+                      placeholder="Enter post description"
+                      rows={3}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openAiModal("text", "postDescription")}
+                      className="mt-1"
+                    >
+                      <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Text content */}
+              {showTextContent && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Text Content</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Textarea
+                      value={textContent}
+                      onChange={(e) => setTextContent(e.target.value)}
+                      placeholder="Enter post text content"
+                      rows={5}
+                    />
+                    <Button
                       variant="ghost"
                       size="sm"
                       onClick={() => openAiModal("text", "textContent")}
-                      className="h-8 gap-1"
+                      className="mt-1"
                     >
-                      <Sparkles className="h-4 w-4" />
-                      AI Generate
+                      <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
                     </Button>
-                  </div>
-                  <Textarea
-                    id="textContent"
-                    value={textContent}
-                    onChange={(e) => setTextContent(e.target.value)}
-                    rows={4}
-                    maxLength={2000}
-                    placeholder="Write your post text..."
-                  />
-                  <div className="text-xs text-muted-foreground text-right">{textContent.length}/2000</div>
-                </div>
+                  </CardContent>
+                </Card>
               )}
 
-              {/* Article Fields - Show only for article type */}
-              {showArticleFields && (
-                <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
-                  <h3 className="font-semibold">Article Fields</h3>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="articleTitle">Article Title (Optional)</Label>
-                    <Input
-                      id="articleTitle"
-                      value={articleTitle}
-                      onChange={(e) => setArticleTitle(e.target.value)}
-                      placeholder="Enter article title..."
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="articleDescription">Article Description (Optional)</Label>
+              {/* PDF text content */}
+              {showPdfTextContent && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>PDF Text Content</CardTitle>
+                  </CardHeader>
+                  <CardContent>
                     <Textarea
-                      id="articleDescription"
-                      value={articleDescription}
-                      onChange={(e) => setArticleDescription(e.target.value)}
-                      rows={3}
-                      placeholder="Enter article description..."
+                      value={textContent}
+                      onChange={(e) => setTextContent(e.target.value)}
+                      placeholder="Enter text content for PDF"
+                      rows={5}
                     />
-                  </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => openAiModal("text", "textContent")}
+                      className="mt-1"
+                    >
+                      <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
 
-                  <div className="space-y-2">
-                    <Label htmlFor="articleUrl">Article URL (Optional)</Label>
-                    <Input
-                      id="articleUrl"
-                      type="url"
-                      value={articleUrl}
-                      onChange={(e) => setArticleUrl(e.target.value)}
-                      placeholder="https://..."
-                    />
-                  </div>
+              {/* Media upload */}
+              {showMediaUpload && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>{getMediaLabel()}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {typeOfPost === "carousel" ? (
+                      <>
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/*"
+                          onChange={handleCarouselFilesChange}
+                          disabled={isConverting || carouselFiles.length + carouselImages.length >= 10}
+                        />
+                        <div className="mt-4 grid grid-cols-4 gap-4">
+                          {carouselImages.map((url, idx) => (
+                            <div key={`img-${idx}`} className="relative">
+                              <img src={url} alt={`Carousel ${idx}`} className="w-full h-24 object-cover rounded" />
+                              <button
+                                type="button"
+                                onClick={() => removeCarouselImage(idx)}
+                                className="absolute top-1 right-1 bg-black bg-opacity-50 rounded-full p-1 text-white"
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          ))}
+                          {carouselFiles.map((file, idx) => (
+                            <div key={`file-${idx}`} className="relative">
+                              <img
+                                src={URL.createObjectURL(file)}
+                                alt={`Carousel file ${idx}`}
+                                className="w-full h-24 object-cover rounded"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeCarouselImage(idx + carouselImages.length)}
+                                className="absolute top-1 right-1 bg-black bg-opacity-50 rounded-full p-1 text-white"
+                              >
+                                <X size={16} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-2 flex items-center space-x-2">
+                          <Input
+                            type="text"
+                            placeholder="AI prompt for carousel image"
+                            value={carouselAiPrompt}
+                            onChange={(e) => setCarouselAiPrompt(e.target.value)}
+                            disabled={carouselGenerating}
+                          />
+                          <Button onClick={generateCarouselAiImage} disabled={carouselGenerating || !carouselAiPrompt.trim()}>
+                            {carouselGenerating ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Plus className="mr-2 h-4 w-4" />}
+                            Generate AI Image
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <input
+                          type="file"
+                          accept={
+                            typeOfPost === "image" || typeOfPost === "carousel"
+                              ? "image/*"
+                              : typeOfPost === "video" || typeOfPost === "shorts"
+                                ? "video/*"
+                                : typeOfPost === "pdf"
+                                  ? "application/pdf"
+                                  : undefined
+                          }
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files.length > 0) {
+                              setMediaFile(e.target.files[0]);
+                              setImageUrl("");
+                              setVideoUrl("");
+                              setPdfUrl("");
+                            }
+                          }}
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openAiModal("image", "media")}
+                          disabled={typeOfPost !== "image" && typeOfPost !== "carousel"}
+                          className="mt-1"
+                        >
+                          <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openAiModal("video", "media")}
+                          disabled={typeOfPost !== "video" && typeOfPost !== "shorts"}
+                          className="mt-1"
+                        >
+                          <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openAiModal("pdf", "media")}
+                          disabled={typeOfPost !== "pdf"}
+                          className="mt-1"
+                        >
+                          <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
+                        </Button>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="articleThumbnail">Upload Thumbnail (Optional)</Label>
+              {/* Article specific fields */}
+              {showArticleFields && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Article Details</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <Label htmlFor="articleTitle">Article Title</Label>
+                      <Input
+                        id="articleTitle"
+                        value={articleTitle}
+                        onChange={(e) => setArticleTitle(e.target.value)}
+                        placeholder="Enter article title"
+                      />
                       <Button
-                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openAiModal("text", "articleTitle")}
+                        className="mt-1"
+                      >
+                        <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
+                      </Button>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="articleDescription">Article Description</Label>
+                      <Textarea
+                        id="articleDescription"
+                        value={articleDescription}
+                        onChange={(e) => setArticleDescription(e.target.value)}
+                        placeholder="Enter article description"
+                        rows={3}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openAiModal("text", "articleDescription")}
+                        className="mt-1"
+                      >
+                        <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
+                      </Button>
+                    </div>
+
+                    <div>
+                      <Label htmlFor="articleUrl">Article URL</Label>
+                      <Input
+                        id="articleUrl"
+                        value={articleUrl}
+                        onChange={(e) => setArticleUrl(e.target.value)}
+                        placeholder="Enter article URL"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="articleThumbnail">Article Thumbnail URL</Label>
+                      <Input
+                        id="articleThumbnail"
+                        value={articleThumbnailUrl}
+                        onChange={(e) => {
+                          setArticleThumbnailUrl(e.target.value);
+                          setArticleThumbnailFile(null);
+                        }}
+                        placeholder="Enter thumbnail image URL"
+                      />
+                      <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => openAiModal("image", "articleThumbnail")}
-                        className="h-8 gap-1"
+                        className="mt-1"
                       >
-                        <Sparkles className="h-4 w-4" />
-                        AI Generate
+                        <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
                       </Button>
-                    </div>
-                    <Input
-                      id="articleThumbnail"
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          setArticleThumbnailFile(file);
-                          setArticleThumbnailUrl(""); // Clear AI URL if file is selected
-                        }
-                      }}
-                    />
-                    {(articleThumbnailFile || articleThumbnailUrl) && (
                       <div className="mt-2">
-                        <p className="text-sm text-muted-foreground mb-2">Preview:</p>
-                        <img
-                          src={
-                            articleThumbnailUrl ||
-                            (articleThumbnailFile ? URL.createObjectURL(articleThumbnailFile) : "")
-                          }
-                          alt="Article thumbnail preview"
-                          className="max-w-xs rounded-lg border"
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files.length > 0) {
+                              setArticleThumbnailFile(e.target.files[0]);
+                              setArticleThumbnailUrl("");
+                            }
+                          }}
                         />
                       </div>
-                    )}
-                  </div>
-                </div>
+                    </div>
+                  </CardContent>
+                </Card>
               )}
 
-              {/* Media Upload - Show for image, carousel, video, shorts, pdf */}
-              {showMediaUpload && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="mediaFile">
-                      {getMediaLabel()} <span className="text-destructive">*</span>
-                    </Label>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        openAiModal(
-                          typeOfPost === "pdf"
-                            ? "pdf"
-                            : typeOfPost === "video" || typeOfPost === "shorts"
-                              ? "video"
-                              : "image",
-                          "media",
-                        )
-                      }
-                      className="h-8 gap-1"
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      AI Generate
-                    </Button>
-                  </div>
-                  <Input
-                    id="mediaFile"
-                    type="file"
-                    onChange={(e) => {
-                      setMediaFile(e.target.files?.[0] || null);
-                      // Clear AI URLs when file is selected
-                      setImageUrl("");
-                      setVideoUrl("");
-                      setPdfUrl("");
-                    }}
-                    accept={
-                      typeOfPost === "image"
-                        ? "image/*"
-                        : typeOfPost === "video" || typeOfPost === "shorts"
-                          ? "video/*"
-                          : typeOfPost === "pdf"
-                            ? "application/pdf"
-                            : "*"
-                    }
-                    required={showMediaUpload && !imageUrl && !videoUrl && !pdfUrl}
-                  />
-                  {mediaFile && <p className="text-sm text-muted-foreground">Selected: {mediaFile.name}</p>}
-
-                  {/* Media Preview */}
-                  {(mediaFile || imageUrl || videoUrl || pdfUrl) && (
-                    <div className="mt-3 p-3 border rounded-lg bg-muted/30">
-                      <p className="text-sm font-medium mb-2">Preview:</p>
-
-                      {/* Image Preview */}
-                      {typeOfPost === "image" && (
-                        <>
-                          {mediaFile && (
-                            <img
-                              src={URL.createObjectURL(mediaFile)}
-                              alt="Preview"
-                              className="max-h-48 rounded-md object-contain"
-                            />
-                          )}
-                          {imageUrl && (
-                            <img
-                              src={imageUrl}
-                              alt="AI Generated Preview"
-                              className="max-h-48 rounded-md object-contain"
-                            />
-                          )}
-                        </>
-                      )}
-
-                      {/* Video Preview */}
-                      {(typeOfPost === "video" || typeOfPost === "shorts") && (
-                        <>
-                          {mediaFile && (
-                            <video src={URL.createObjectURL(mediaFile)} controls className="max-h-48 rounded-md" />
-                          )}
-                          {videoUrl && <video src={videoUrl} controls className="max-h-48 rounded-md" />}
-                        </>
-                      )}
-
-                      {/* PDF Preview */}
-                      {typeOfPost === "pdf" && (
-                        <>
-                          {mediaFile && (
-                            <div className="flex items-center gap-2 p-3 bg-background rounded-md">
-                              <div className="text-2xl">📄</div>
-                              <div>
-                                <p className="text-sm font-medium">{mediaFile.name}</p>
-                                <p className="text-xs text-muted-foreground">{(mediaFile.size / 1024).toFixed(2)} KB</p>
-                              </div>
-                            </div>
-                          )}
-                          {pdfUrl && (
-                            <div className="flex items-center gap-2 p-3 bg-background rounded-md">
-                              <div className="text-2xl">📄</div>
-                              <div>
-                                <p className="text-sm font-medium">AI Generated PDF</p>
-                                <a
-                                  href={pdfUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-primary hover:underline"
-                                >
-                                  View PDF
-                                </a>
-                              </div>
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
-                  {/* Media Notifications */}
-                  {typeOfPost === "video" && platforms.includes("instagram") && (
-                    <p className="text-sm text-blue-600">(In Instagram, Now Video is posted as Reel...)</p>
-                  )}
-
-                  {typeOfPost === "shorts" && platforms.includes("facebook") && (
-                    <p className="text-sm text-blue-600">(In Facebook, Now Reel is posted as Video...)</p>
-                  )}
-                </div>
-              )}
-
-              {/* Carousel Upload - Show only for carousel type */}
-              {showCarouselUpload && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <Label>
-                      Carousel Images ({getTotalCarouselCount()}/10) <span className="text-destructive">*</span>
-                    </Label>
-                  </div>
-
-                  {/* AI Generation Section */}
-                  <div className="p-4 border rounded-lg bg-muted/30 space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="h-4 w-4 text-primary" />
-                      <span className="text-sm font-medium">AI Generate Images</span>
-                    </div>
-                    <div className="flex gap-2">
+              {/* YouTube specific fields */}
+              {showYoutubeFields && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>YouTube Details</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <Label htmlFor="youtubeTitle">YouTube Title</Label>
                       <Input
-                        placeholder="Describe the image you want to generate..."
-                        value={carouselAiPrompt}
-                        onChange={(e) => setCarouselAiPrompt(e.target.value)}
-                        disabled={carouselGenerating || getTotalCarouselCount() >= 10}
+                        id="youtubeTitle"
+                        value={youtubeTitle}
+                        onChange={(e) => setYoutubeTitle(e.target.value)}
+                        placeholder="Enter YouTube video title"
                       />
                       <Button
-                        type="button"
-                        onClick={generateCarouselAiImage}
-                        disabled={carouselGenerating || getTotalCarouselCount() >= 10 || !carouselAiPrompt.trim()}
-                        className="shrink-0"
-                      >
-                        {carouselGenerating ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Generating...
-                          </>
-                        ) : (
-                          <>
-                            <Plus className="mr-2 h-4 w-4" />
-                            Generate
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Generate images one by one. Each generation adds one image to the carousel.
-                    </p>
-                  </div>
-
-                  {/* Instagram Carousel Notice */}
-                  {isInstagramCarousel && (
-                    <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-sm">
-                      <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
-                      <span className="text-amber-700 dark:text-amber-300">
-                        Instagram carousels require 1:1, 4:5, or 1.91:1 aspect ratio. Other formats will be rejected. Images are automatically converted to JPEG.
-                      </span>
-                    </div>
-                  )}
-
-                  {/* File Upload Section */}
-                  <div className="space-y-2">
-                    <Label htmlFor="carouselFiles">Or Upload Images from Device</Label>
-                    <Input
-                      id="carouselFiles"
-                      type="file"
-                      accept={isInstagramCarousel ? "image/jpeg,image/jpg" : "image/*"}
-                      multiple
-                      onChange={handleCarouselFilesChange}
-                      disabled={getTotalCarouselCount() >= 10 || isConverting}
-                    />
-                    {isConverting && (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Converting images to JPEG...
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Preview Grid */}
-                  {getTotalCarouselCount() > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">Preview:</p>
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                        {/* AI Generated Images */}
-                        {carouselImages.map((url, index) => (
-                          <div key={`ai-${index}`} className="relative group">
-                            <img
-                              src={url}
-                              alt={`Carousel image ${index + 1}`}
-                              className="w-full h-24 object-cover rounded-lg border"
-                            />
-                            <div className="absolute top-1 left-1 bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded">
-                              AI
-                            </div>
-                            <Button
-                              type="button"
-                              variant="destructive"
-                              size="icon"
-                              className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => removeCarouselImage(index)}
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                            <div className="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
-                              {index + 1}
-                            </div>
-                          </div>
-                        ))}
-
-                        {/* Uploaded Files */}
-                        {carouselFiles.map((file, index) => (
-                          <div key={`file-${index}`} className="relative group">
-                            <img
-                              src={URL.createObjectURL(file)}
-                              alt={file.name}
-                              className="w-full h-24 object-cover rounded-lg border"
-                            />
-                            <Button
-                              type="button"
-                              variant="destructive"
-                              size="icon"
-                              className="absolute top-1 right-1 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => removeCarouselFile(index)}
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                            <div className="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
-                              {carouselImages.length + index + 1}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {getTotalCarouselCount() === 0 && (
-                    <p className="text-sm text-muted-foreground text-center py-4 border-2 border-dashed rounded-lg">
-                      No images added yet. Generate with AI or upload from your device.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {showPdfTextContent && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="pdfTextContent">Text Content (Optional)</Label>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openAiModal("text", "textContent")}
-                      className="h-8 gap-1"
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      AI Generate
-                    </Button>
-                  </div>
-                  <Textarea
-                    id="pdfTextContent"
-                    value={textContent}
-                    onChange={(e) => setTextContent(e.target.value)}
-                    rows={4}
-                    maxLength={2000}
-                    placeholder="Write accompanying text for your PDF post..."
-                  />
-                  <div className="text-xs text-muted-foreground text-right">{textContent.length}/2000</div>
-                </div>
-              )}
-
-              {/* YouTube Fields - Show when YouTube selected and type is video */}
-              {showYoutubeFields && (
-                <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
-                  <h3 className="font-semibold">YouTube Fields</h3>
-
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="youtubeTitle">Video Title (Optional)</Label>
-                      <Button
-                        type="button"
                         variant="ghost"
                         size="sm"
                         onClick={() => openAiModal("text", "youtubeTitle")}
-                        className="h-8 gap-1"
+                        className="mt-1"
                       >
-                        <Sparkles className="h-4 w-4" />
-                        AI
+                        <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
                       </Button>
                     </div>
-                    <Input
-                      id="youtubeTitle"
-                      value={youtubeTitle}
-                      onChange={(e) => setYoutubeTitle(e.target.value)}
-                      placeholder="Enter video title..."
-                    />
-                  </div>
 
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="youtubeDescription">Video Description (Optional)</Label>
+                    <div>
+                      <Label htmlFor="youtubeDescription">YouTube Description</Label>
+                      <Textarea
+                        id="youtubeDescription"
+                        value={youtubeDescription}
+                        onChange={(e) => setYoutubeDescription(e.target.value)}
+                        placeholder="Enter YouTube video description"
+                        rows={3}
+                      />
                       <Button
-                        type="button"
                         variant="ghost"
                         size="sm"
                         onClick={() => openAiModal("text", "youtubeDescription")}
-                        className="h-8 gap-1"
+                        className="mt-1"
                       >
-                        <Sparkles className="h-4 w-4" />
-                        AI
+                        <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
                       </Button>
                     </div>
-                    <Textarea
-                      id="youtubeDescription"
-                      value={youtubeDescription}
-                      onChange={(e) => setYoutubeDescription(e.target.value)}
-                      rows={3}
-                      placeholder="Enter video description..."
-                    />
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               )}
 
-              {/* Instagram Fields - Show when Instagram selected */}
+              {/* Instagram tags */}
               {showInstagramFields && (
-                <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
-                  <h3 className="font-semibold">Instagram Fields</h3>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="instagramTags">Instagram Tags</Label>
-                    <Input
-                      id="instagramTags"
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Instagram Hashtags</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Textarea
                       value={instagramTags}
                       onChange={(e) => setInstagramTags(e.target.value)}
-                      placeholder="Enter username of Instagram profile to tag or mention..."
+                      placeholder="Enter Instagram hashtags separated by spaces"
+                      rows={2}
                     />
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               )}
 
-              {/* Facebook Fields - Show when Facebook selected */}
+              {/* Facebook tags */}
               {showFacebookFields && (
-                <div className="space-y-4 p-4 border rounded-lg bg-muted/30">
-                  <h3 className="font-semibold">Facebook Fields</h3>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="facebookTags">Facebook Tags</Label>
-                    <Input
-                      id="facebookTags"
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Facebook Hashtags</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <Textarea
                       value={facebookTags}
                       onChange={(e) => setFacebookTags(e.target.value)}
-                      placeholder="Enter URLs of Facebook Profile to tag or mention..."
+                      placeholder="Enter Facebook hashtags separated by spaces"
+                      rows={2}
                     />
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               )}
 
-              {/* Schedule - Show when type is selected */}
+              {/* Status and scheduling */}
               {showSchedule && (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="status">
-                      Status <span className="text-destructive">*</span>
-                    </Label>
-                    <Select value={status} onValueChange={setStatus} required>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Post Status & Scheduling</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <Select value={status} onValueChange={setStatus}>
                       <SelectTrigger>
-                        <SelectValue />
+                        <SelectValue placeholder="Select status" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="draft">Draft</SelectItem>
@@ -1332,62 +1040,56 @@ export default function CreatePost() {
                         <SelectItem value="published">Published</SelectItem>
                       </SelectContent>
                     </Select>
-                  </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="scheduledAt">
-                      Schedule Date & Time <span className="text-destructive">*</span>
-                    </Label>
-                    <Input
-                      id="scheduledAt"
-                      type="datetime-local"
-                      value={scheduledAt}
-                      onChange={(e) => setScheduledAt(e.target.value)}
-                      required={showSchedule}
-                    />
-                  </div>
-                </div>
+                    {status === "scheduled" && (
+                      <div>
+                        <Label htmlFor="scheduledAt">Scheduled Date & Time</Label>
+                        <Input
+                          id="scheduledAt"
+                          type="datetime-local"
+                          value={scheduledAt}
+                          onChange={(e) => setScheduledAt(e.target.value)}
+                        />
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
               )}
 
-              {/* Submit Buttons */}
-              {typeOfPost && (
-                <div className="flex gap-3">
-                  <Button type="submit" disabled={loading || uploading}>
-                    {uploading ? "Uploading..." : loading ? "Creating..." : "Submit"}
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => navigate("/posts")}>
-                    Cancel
-                  </Button>
-                </div>
-              )}
+              <div className="flex justify-end space-x-4">
+                <Button type="submit" disabled={loading || uploading}>
+                  {loading || uploading ? (
+                    <>
+                      <Loader2 className="animate-spin mr-2 h-4 w-4" /> Saving...
+                    </>
+                  ) : (
+                    "Create Post"
+                  )}
+                </Button>
+                <Button type="button" variant="outline" onClick={() => navigate("/posts")}>
+                  Cancel
+                </Button>
+              </div>
             </form>
-          </CardContent>
-        </Card>
+          </>
+        )}
       </div>
 
       <AiPromptModal
         open={aiModalOpen}
-        onClose={() => setAiModalOpen(false)}
+        onOpenChange={setAiModalOpen}
+        field={aiModalField}
         onGenerate={handleAiGenerate}
-        fieldType={aiModalField}
-        context={{
-          userId: user?.id,
-          apiKey: openaiApiKey,
-          platforms: platforms,
-          typeOfPost: typeOfPost,
-          title: postTitle,
-          description: postDescription,
-        }}
       />
 
       <AlertDialog open={showConnectionAlert} onOpenChange={setShowConnectionAlert}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Account Connection Required</AlertDialogTitle>
-            <AlertDialogDescription>{alertMessage}</AlertDialogDescription>
+            <AlertDialogTitle>Platform Not Connected</AlertDialogTitle>
           </AlertDialogHeader>
+          <AlertDialogDescription>{alertMessage}</AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogAction onClick={() => navigate("/accounts")}>Go to Accounts</AlertDialogAction>
+            <AlertDialogAction onClick={() => navigate("/accounts")}>Connect Account</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -1396,12 +1098,10 @@ export default function CreatePost() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>OpenAI Not Connected</AlertDialogTitle>
-            <AlertDialogDescription>
-              Please connect your OpenAI account first to use AI generation features.
-            </AlertDialogDescription>
           </AlertDialogHeader>
+          <AlertDialogDescription>Please connect your OpenAI account to generate content with AI.</AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogAction onClick={() => navigate("/accounts")}>Go to Accounts</AlertDialogAction>
+            <AlertDialogAction onClick={() => navigate("/accounts")}>Connect OpenAI</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
