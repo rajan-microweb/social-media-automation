@@ -33,6 +33,19 @@ import { PlatformConnectDialog } from "@/components/PlatformConnectDialog";
 import { TokenExpirationBadge } from "@/components/accounts/TokenExpirationBadge";
 import { calculateTokenExpiration, TokenExpirationInfo } from "@/hooks/useTokenExpiration";
 
+interface OpenAIAccountMeta {
+  email: string | null;
+  phone: string | null;
+  createdAt: string | null;
+  organizations: Array<{
+    org_id?: string;
+    org_name?: string;
+    org_title?: string;
+    role?: string;
+    is_default?: boolean;
+  }>;
+}
+
 interface ConnectedAccount {
   id: string;
   platform: string;
@@ -43,6 +56,7 @@ interface ConnectedAccount {
   platformIcon: React.ComponentType<{ className?: string }>;
   platformColor: string;
   tokenExpiration?: TokenExpirationInfo;
+  openaiMetadata?: OpenAIAccountMeta;
 }
 
 interface PlatformConfig {
@@ -219,16 +233,25 @@ export default function Accounts() {
 
         // --- HANDLE OPENAI ---
         if (platformName === "openai") {
-          const orgName = credentials?.organizations?.[0]?.org_title;
+          const personalInfo = metadata?.personal_info;
+          const orgs = metadata?.organizations;
+          const displayName = personalInfo?.name || (orgs?.[0]?.org_name) || "OpenAI API";
+          const avatarUrl = personalInfo?.avatar_url || null;
           accounts.push({
             id: `openai-${integration.id}`,
             platform: config.name,
-            accountId: credentials?.masked_key || "sk-...****",
-            accountName: orgName ? `OpenAI (${orgName})` : "OpenAI API",
+            accountId: personalInfo?.openai_user_id || integration.id,
+            accountName: displayName,
             accountType: "personal",
-            avatarUrl: null,
+            avatarUrl,
             platformIcon: config.icon,
             platformColor: config.color,
+            openaiMetadata: {
+              email: personalInfo?.email || null,
+              phone: personalInfo?.phone || null,
+              createdAt: personalInfo?.created_at || null,
+              organizations: Array.isArray(orgs) ? orgs : [],
+            },
           });
           return;
         }
@@ -832,30 +855,66 @@ export default function Accounts() {
                 </div>
                 {/* --- ADD THIS: The card grid for OpenAI accounts --- */}
                 {isConnected && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {platformAccounts.map((account) => (
-                      <Card key={account.id} className="hover:shadow-lg transition-all duration-300 border-border/50">
-                        <CardHeader className="space-y-3">
-                          <div className="flex items-center gap-3">
-                            <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center">
-                              <Icon className={`h-6 w-6 ${color}`} />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {platformAccounts.map((account) => {
+                      const meta = account.openaiMetadata;
+                      return (
+                        <Card key={account.id} className="hover:shadow-lg transition-all duration-300 border-border/50">
+                          <CardHeader className="pb-3">
+                            <div className="flex items-center gap-4">
+                              {account.avatarUrl ? (
+                                <img
+                                  src={account.avatarUrl}
+                                  alt={account.accountName}
+                                  className="h-14 w-14 rounded-full object-cover border-2 border-border"
+                                />
+                              ) : (
+                                <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center">
+                                  <Icon className={`h-7 w-7 ${color}`} />
+                                </div>
+                              )}
+                              <div className="min-w-0">
+                                <CardTitle className="text-lg truncate">{account.accountName}</CardTitle>
+                                {meta?.email && (
+                                  <p className="text-sm text-muted-foreground truncate">{meta.email}</p>
+                                )}
+                              </div>
                             </div>
-                            <div>
-                              <CardTitle className="text-base">{account.accountName}</CardTitle>
-                              <Badge variant="secondary" className="mt-1 text-xs bg-green-500/10 text-green-600">
+                          </CardHeader>
+                          <CardContent className="space-y-3">
+                            <div className="flex items-center gap-2 text-sm">
+                              <span className="h-2 w-2 rounded-full bg-green-500" />
+                              <span className="text-muted-foreground">Connected</span>
+                              <Badge variant="secondary" className="ml-auto text-xs bg-green-500/10 text-green-600">
                                 API Key
                               </Badge>
                             </div>
-                          </div>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <span className="h-2 w-2 rounded-full bg-green-500" />
-                            Connected
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
+
+                            {meta?.organizations && meta.organizations.length > 0 && (
+                              <div className="pt-2 border-t border-border/50 space-y-2">
+                                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Organizations</p>
+                                {meta.organizations.map((org, i) => (
+                                  <div key={i} className="flex items-center justify-between text-sm">
+                                    <span className="truncate">{org.org_title || org.org_name || "Organization"}</span>
+                                    {org.role && (
+                                      <Badge variant="outline" className="text-xs ml-2 shrink-0">
+                                        {org.role}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+
+                            {meta?.createdAt && (
+                              <p className="text-xs text-muted-foreground pt-1">
+                                Member since {new Date(meta.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "short" })}
+                              </p>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
                 )}
               </div>
