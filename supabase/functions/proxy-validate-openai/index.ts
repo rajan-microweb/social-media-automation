@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
       }));
     }
 
-    const openaiKey = credentials.api_key as string;
+    const openaiKey = (credentials.api_key || credentials.apiKey) as string;
     if (!openaiKey) {
       return jsonResponse(successResponse({
         valid: false,
