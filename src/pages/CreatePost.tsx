@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { z } from "zod";
-import { Sparkles, X, Plus, Loader2 } from "lucide-react";
+import { Sparkles, X, Plus, Loader2, Facebook, Instagram, Linkedin, Youtube, Twitter } from "lucide-react";
 import { convertFileToJpeg, isJpegFile, convertToJpeg, convertUrlToJpegFile } from "@/lib/imageUtils";
 import { AiPromptModal } from "@/components/AiPromptModal";
 import {
@@ -563,6 +563,15 @@ export default function CreatePost() {
     return "Upload Media";
   };
 
+  // Platform icon config for card-style selection
+  const platformIcons: Record<string, { icon: React.ComponentType<{ className?: string }>; color: string; bg: string }> = {
+    Facebook: { icon: Facebook, color: "text-[#1877F3]", bg: "border-[#1877F3]" },
+    Instagram: { icon: Instagram, color: "text-[#E4405F]", bg: "border-[#E4405F]" },
+    LinkedIn: { icon: Linkedin, color: "text-[#0A66C2]", bg: "border-[#0A66C2]" },
+    YouTube: { icon: Youtube, color: "text-[#FF0000]", bg: "border-[#FF0000]" },
+    Twitter: { icon: Twitter, color: "text-[#1DA1F2]", bg: "border-[#1DA1F2]" },
+  };
+
   return (
     <DashboardLayout>
       <div className="max-w-3xl mx-auto space-y-6">
@@ -571,65 +580,38 @@ export default function CreatePost() {
           <p className="text-muted-foreground">Create a new social media post</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Post Details - Title, Description, Type of Post */}
+        <form onSubmit={handleSubmit}>
           <Card>
-            <CardHeader>
-              <CardTitle>Post Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="pt-6 space-y-6">
+              {/* Post Details Header */}
+              <h2 className="text-xl font-semibold">Post Details</h2>
+
+              {/* Post Title */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <Label htmlFor="postTitle">Post Title</Label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => openAiModal("text", "postTitle")}
-                    className="text-xs h-auto py-1"
-                  >
+                  <Button type="button" variant="ghost" size="sm" onClick={() => openAiModal("text", "postTitle")} className="text-xs h-auto py-1">
                     <Sparkles className="mr-1 h-3.5 w-3.5" /> AI Generate
                   </Button>
                 </div>
-                <Input
-                  id="postTitle"
-                  value={postTitle}
-                  onChange={(e) => setPostTitle(e.target.value)}
-                  placeholder="Enter post title..."
-                />
+                <Input id="postTitle" value={postTitle} onChange={(e) => setPostTitle(e.target.value)} placeholder="Enter post title..." />
               </div>
 
+              {/* Post Description */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <Label htmlFor="postDescription">Post Description (Optional)</Label>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => openAiModal("text", "postDescription")}
-                    className="text-xs h-auto py-1"
-                  >
+                  <Button type="button" variant="ghost" size="sm" onClick={() => openAiModal("text", "postDescription")} className="text-xs h-auto py-1">
                     <Sparkles className="mr-1 h-3.5 w-3.5" /> AI Generate
                   </Button>
                 </div>
-                <Textarea
-                  id="postDescription"
-                  value={postDescription}
-                  onChange={(e) => setPostDescription(e.target.value)}
-                  placeholder="Enter post description..."
-                  rows={3}
-                  maxLength={5000}
-                />
-                <p className="text-xs text-muted-foreground text-right mt-1">
-                  {postDescription.length}/5000
-                </p>
+                <Textarea id="postDescription" value={postDescription} onChange={(e) => setPostDescription(e.target.value)} placeholder="Enter post description..." rows={3} maxLength={5000} />
+                <p className="text-xs text-muted-foreground text-right mt-1">{postDescription.length}/5000</p>
               </div>
 
-              {/* Type of Post as Select dropdown */}
+              {/* Type of Post */}
               <div>
-                <Label>
-                  Type of Post <span className="text-destructive">*</span>
-                </Label>
+                <Label>Type of Post <span className="text-destructive">*</span></Label>
                 <Select value={typeOfPost} onValueChange={setTypeOfPost}>
                   <SelectTrigger className="mt-1">
                     <SelectValue placeholder="Select..." />
@@ -645,292 +627,208 @@ export default function CreatePost() {
                   </SelectContent>
                 </Select>
               </div>
-            </CardContent>
-          </Card>
 
-          {typeOfPost && (
-            <>
-              {/* Platforms selection */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Select Platforms</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-4">
-                    {availablePlatforms.map((platform) => (
-                      <label key={platform} className="inline-flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          checked={platforms.includes(platform.toLowerCase())}
-                          onChange={(e) => handlePlatformChange(platform, e.target.checked)}
-                        />
-                        <span className="capitalize">{platform}</span>
-                      </label>
-                    ))}
+              {typeOfPost && (
+                <>
+                  {/* Platforms */}
+                  <div>
+                    <Label>Platforms <span className="text-destructive">*</span></Label>
+                    <div className="flex flex-wrap gap-3 mt-2">
+                      {availablePlatforms.map((platform) => {
+                        const isSelected = platforms.includes(platform.toLowerCase());
+                        const iconConfig = platformIcons[platform];
+                        const PlatformIcon = iconConfig?.icon || Linkedin;
+                        return (
+                          <button
+                            key={platform}
+                            type="button"
+                            onClick={() => handlePlatformChange(platform, !isSelected)}
+                            className={`flex flex-col items-center gap-1 p-3 rounded-lg border-2 transition-all min-w-[70px] ${
+                              isSelected
+                                ? `${iconConfig?.bg || "border-primary"} bg-background shadow-sm`
+                                : "border-border hover:border-muted-foreground/50"
+                            }`}
+                          >
+                            <PlatformIcon className={`h-7 w-7 ${iconConfig?.color || "text-foreground"}`} />
+                            <span className="text-xs font-medium">{platform}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
 
-              {/* Account selectors */}
-              {showAccountSelectors && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Select Accounts</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {platforms.map((platform) => (
-                      <PlatformAccountSelector
-                        key={platform}
-                        accounts={platformAccounts}
-                        selectedAccountIds={selectedAccountIds}
-                        onAccountToggle={handleAccountToggle}
-                        loading={loadingPlatformAccounts}
-                        platform={platform}
+                  {/* Account selectors */}
+                  {showAccountSelectors && (
+                    <div>
+                      {platforms.map((platform) => (
+                        <PlatformAccountSelector
+                          key={platform}
+                          accounts={platformAccounts}
+                          selectedAccountIds={selectedAccountIds}
+                          onAccountToggle={handleAccountToggle}
+                          loading={loadingPlatformAccounts}
+                          platform={platform}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Text Content */}
+                  {(showTextContent || showPdfTextContent) && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <Label>Text Content (Optional)</Label>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => openAiModal("text", "textContent")} className="text-xs h-auto py-1">
+                          <Sparkles className="mr-1 h-3.5 w-3.5" /> AI Generate
+                        </Button>
+                      </div>
+                      <Textarea
+                        value={textContent}
+                        onChange={(e) => setTextContent(e.target.value)}
+                        placeholder={showPdfTextContent ? "Write accompanying text for your PDF post..." : "Write your post text..."}
+                        rows={4}
+                        maxLength={2000}
                       />
-                    ))}
-                  </CardContent>
-                </Card>
-              )}
+                      <p className="text-xs text-muted-foreground text-right mt-1">{textContent.length}/2000</p>
+                    </div>
+                  )}
 
-              {/* Text content */}
-              {showTextContent && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Text Content</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Textarea
-                      value={textContent}
-                      onChange={(e) => setTextContent(e.target.value)}
-                      placeholder="Enter post text content"
-                      rows={5}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openAiModal("text", "textContent")}
-                      className="mt-1"
-                    >
-                      <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
+                  {/* Carousel Images */}
+                  {typeOfPost === "carousel" && (
+                    <div className="space-y-3">
+                      <Label>Carousel Images ({getTotalCarouselCount()}/10) <span className="text-destructive">*</span></Label>
 
-              {/* PDF text content */}
-              {showPdfTextContent && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>PDF Text Content</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Textarea
-                      value={textContent}
-                      onChange={(e) => setTextContent(e.target.value)}
-                      placeholder="Enter text content for PDF"
-                      rows={5}
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => openAiModal("text", "textContent")}
-                      className="mt-1"
-                    >
-                      <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
+                      {/* AI Generate section */}
+                      <div className="border rounded-lg p-3 space-y-2">
+                        <div className="flex items-center gap-1 text-sm font-medium">
+                          <Sparkles className="h-4 w-4" /> AI Generate Images
+                        </div>
+                        <div className="flex gap-2">
+                          <Input
+                            type="text"
+                            placeholder="Describe the image you want to generate..."
+                            value={carouselAiPrompt}
+                            onChange={(e) => setCarouselAiPrompt(e.target.value)}
+                            disabled={carouselGenerating}
+                          />
+                          <Button type="button" onClick={generateCarouselAiImage} disabled={carouselGenerating || !carouselAiPrompt.trim()} size="sm">
+                            {carouselGenerating ? <Loader2 className="animate-spin mr-1 h-4 w-4" /> : <Plus className="mr-1 h-4 w-4" />}
+                            Generate
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">Generate images one by one. Each generation adds one image to the carousel.</p>
+                      </div>
 
-              {/* Media upload */}
-              {showMediaUpload && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>{getMediaLabel()}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {typeOfPost === "carousel" ? (
-                      <>
+                      {/* File upload */}
+                      <div>
+                        <Label className="text-sm">Or Upload Images from Device</Label>
                         <input
                           type="file"
                           multiple
                           accept="image/*"
                           onChange={handleCarouselFilesChange}
-                          disabled={isConverting || carouselFiles.length + carouselImages.length >= 10}
+                          disabled={isConverting || getTotalCarouselCount() >= 10}
+                          className="mt-1 block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-muted file:text-foreground hover:file:bg-muted/80"
                         />
-                        <div className="mt-4 grid grid-cols-4 gap-4">
+                      </div>
+
+                      {/* Preview grid */}
+                      {getTotalCarouselCount() > 0 ? (
+                        <div className="grid grid-cols-5 gap-2">
                           {carouselImages.map((url, idx) => (
                             <div key={`img-${idx}`} className="relative">
-                              <img src={url} alt={`Carousel ${idx}`} className="w-full h-24 object-cover rounded" />
-                              <button
-                                type="button"
-                                onClick={() => removeCarouselImage(idx)}
-                                className="absolute top-1 right-1 bg-black bg-opacity-50 rounded-full p-1 text-white"
-                              >
-                                <X size={16} />
+                              <img src={url} alt={`Carousel ${idx}`} className="w-full h-20 object-cover rounded" />
+                              <button type="button" onClick={() => removeCarouselImage(idx)} className="absolute top-1 right-1 bg-black/50 rounded-full p-0.5 text-white">
+                                <X size={12} />
                               </button>
                             </div>
                           ))}
                           {carouselFiles.map((file, idx) => (
                             <div key={`file-${idx}`} className="relative">
-                              <img
-                                src={URL.createObjectURL(file)}
-                                alt={`Carousel file ${idx}`}
-                                className="w-full h-24 object-cover rounded"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => removeCarouselImage(idx + carouselImages.length)}
-                                className="absolute top-1 right-1 bg-black bg-opacity-50 rounded-full p-1 text-white"
-                              >
-                                <X size={16} />
+                              <img src={URL.createObjectURL(file)} alt={`File ${idx}`} className="w-full h-20 object-cover rounded" />
+                              <button type="button" onClick={() => removeCarouselImage(idx + carouselImages.length)} className="absolute top-1 right-1 bg-black/50 rounded-full p-0.5 text-white">
+                                <X size={12} />
                               </button>
                             </div>
                           ))}
                         </div>
-                        <div className="mt-2 flex items-center space-x-2">
-                          <Input
-                            type="text"
-                            placeholder="AI prompt for carousel image"
-                            value={carouselAiPrompt}
-                            onChange={(e) => setCarouselAiPrompt(e.target.value)}
-                            disabled={carouselGenerating}
-                          />
-                          <Button onClick={generateCarouselAiImage} disabled={carouselGenerating || !carouselAiPrompt.trim()}>
-                            {carouselGenerating ? <Loader2 className="animate-spin mr-2 h-4 w-4" /> : <Plus className="mr-2 h-4 w-4" />}
-                            Generate AI Image
+                      ) : (
+                        <p className="text-sm text-muted-foreground text-center py-3 border rounded-lg">
+                          No images added yet. Generate with AI or upload from your device.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Media upload (non-carousel) */}
+                  {showMediaUpload && typeOfPost !== "carousel" && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <Label>{getMediaLabel()} <span className="text-destructive">*</span></Label>
+                        {(typeOfPost === "image") && (
+                          <Button type="button" variant="ghost" size="sm" onClick={() => openAiModal("image", "media")} className="text-xs h-auto py-1">
+                            <Sparkles className="mr-1 h-3.5 w-3.5" /> AI Generate
+                          </Button>
+                        )}
+                        {(typeOfPost === "video" || typeOfPost === "shorts") && (
+                          <Button type="button" variant="ghost" size="sm" onClick={() => openAiModal("video", "media")} className="text-xs h-auto py-1">
+                            <Sparkles className="mr-1 h-3.5 w-3.5" /> AI Generate
+                          </Button>
+                        )}
+                        {typeOfPost === "pdf" && (
+                          <Button type="button" variant="ghost" size="sm" onClick={() => openAiModal("pdf", "media")} className="text-xs h-auto py-1">
+                            <Sparkles className="mr-1 h-3.5 w-3.5" /> AI Generate
+                          </Button>
+                        )}
+                      </div>
+                      <input
+                        type="file"
+                        accept={
+                          typeOfPost === "image" ? "image/*"
+                            : typeOfPost === "video" || typeOfPost === "shorts" ? "video/*"
+                            : typeOfPost === "pdf" ? "application/pdf"
+                            : undefined
+                        }
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files.length > 0) {
+                            setMediaFile(e.target.files[0]);
+                            setImageUrl("");
+                            setVideoUrl("");
+                            setPdfUrl("");
+                          }
+                        }}
+                        className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-muted file:text-foreground hover:file:bg-muted/80"
+                      />
+                    </div>
+                  )}
+
+                  {/* Article fields */}
+                  {showArticleFields && (
+                    <div className="border rounded-lg p-4 space-y-4">
+                      <h3 className="font-semibold">Article Fields</h3>
+
+                      <div>
+                        <Label htmlFor="articleTitle">Article Title (Optional)</Label>
+                        <Input id="articleTitle" value={articleTitle} onChange={(e) => setArticleTitle(e.target.value)} placeholder="Enter article title..." />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="articleDescription">Article Description (Optional)</Label>
+                        <Textarea id="articleDescription" value={articleDescription} onChange={(e) => setArticleDescription(e.target.value)} placeholder="Enter article description..." rows={3} />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="articleUrl">Article URL (Optional)</Label>
+                        <Input id="articleUrl" value={articleUrl} onChange={(e) => setArticleUrl(e.target.value)} placeholder="https://..." />
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <Label>Upload Thumbnail (Optional)</Label>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => openAiModal("image", "articleThumbnail")} className="text-xs h-auto py-1">
+                            <Sparkles className="mr-1 h-3.5 w-3.5" /> AI Generate
                           </Button>
                         </div>
-                      </>
-                    ) : (
-                      <>
-                        <input
-                          type="file"
-                          accept={
-                            typeOfPost === "image" || typeOfPost === "carousel"
-                              ? "image/*"
-                              : typeOfPost === "video" || typeOfPost === "shorts"
-                                ? "video/*"
-                                : typeOfPost === "pdf"
-                                  ? "application/pdf"
-                                  : undefined
-                          }
-                          onChange={(e) => {
-                            if (e.target.files && e.target.files.length > 0) {
-                              setMediaFile(e.target.files[0]);
-                              setImageUrl("");
-                              setVideoUrl("");
-                              setPdfUrl("");
-                            }
-                          }}
-                        />
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openAiModal("image", "media")}
-                          disabled={typeOfPost !== "image" && typeOfPost !== "carousel"}
-                          className="mt-1"
-                        >
-                          <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openAiModal("video", "media")}
-                          disabled={typeOfPost !== "video" && typeOfPost !== "shorts"}
-                          className="mt-1"
-                        >
-                          <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openAiModal("pdf", "media")}
-                          disabled={typeOfPost !== "pdf"}
-                          className="mt-1"
-                        >
-                          <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
-                        </Button>
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Article specific fields */}
-              {showArticleFields && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Article Details</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <Label htmlFor="articleTitle">Article Title</Label>
-                      <Input
-                        id="articleTitle"
-                        value={articleTitle}
-                        onChange={(e) => setArticleTitle(e.target.value)}
-                        placeholder="Enter article title"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openAiModal("text", "articleTitle")}
-                        className="mt-1"
-                      >
-                        <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
-                      </Button>
-                    </div>
-
-                    <div>
-                      <Label htmlFor="articleDescription">Article Description</Label>
-                      <Textarea
-                        id="articleDescription"
-                        value={articleDescription}
-                        onChange={(e) => setArticleDescription(e.target.value)}
-                        placeholder="Enter article description"
-                        rows={3}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openAiModal("text", "articleDescription")}
-                        className="mt-1"
-                      >
-                        <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
-                      </Button>
-                    </div>
-
-                    <div>
-                      <Label htmlFor="articleUrl">Article URL</Label>
-                      <Input
-                        id="articleUrl"
-                        value={articleUrl}
-                        onChange={(e) => setArticleUrl(e.target.value)}
-                        placeholder="Enter article URL"
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="articleThumbnail">Article Thumbnail URL</Label>
-                      <Input
-                        id="articleThumbnail"
-                        value={articleThumbnailUrl}
-                        onChange={(e) => {
-                          setArticleThumbnailUrl(e.target.value);
-                          setArticleThumbnailFile(null);
-                        }}
-                        placeholder="Enter thumbnail image URL"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openAiModal("image", "articleThumbnail")}
-                        className="mt-1"
-                      >
-                        <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
-                      </Button>
-                      <div className="mt-2">
                         <input
                           type="file"
                           accept="image/*"
@@ -940,142 +838,90 @@ export default function CreatePost() {
                               setArticleThumbnailUrl("");
                             }
                           }}
+                          className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-muted file:text-foreground hover:file:bg-muted/80"
                         />
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
+                  )}
 
-              {/* YouTube specific fields */}
-              {showYoutubeFields && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>YouTube Details</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <Label htmlFor="youtubeTitle">YouTube Title</Label>
-                      <Input
-                        id="youtubeTitle"
-                        value={youtubeTitle}
-                        onChange={(e) => setYoutubeTitle(e.target.value)}
-                        placeholder="Enter YouTube video title"
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openAiModal("text", "youtubeTitle")}
-                        className="mt-1"
-                      >
-                        <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
-                      </Button>
-                    </div>
-
-                    <div>
-                      <Label htmlFor="youtubeDescription">YouTube Description</Label>
-                      <Textarea
-                        id="youtubeDescription"
-                        value={youtubeDescription}
-                        onChange={(e) => setYoutubeDescription(e.target.value)}
-                        placeholder="Enter YouTube video description"
-                        rows={3}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openAiModal("text", "youtubeDescription")}
-                        className="mt-1"
-                      >
-                        <Sparkles className="mr-1 h-4 w-4" /> Generate with AI
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Instagram tags */}
-              {showInstagramFields && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Instagram Hashtags</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Textarea
-                      value={instagramTags}
-                      onChange={(e) => setInstagramTags(e.target.value)}
-                      placeholder="Enter Instagram hashtags separated by spaces"
-                      rows={2}
-                    />
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Facebook tags */}
-              {showFacebookFields && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Facebook Hashtags</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <Textarea
-                      value={facebookTags}
-                      onChange={(e) => setFacebookTags(e.target.value)}
-                      placeholder="Enter Facebook hashtags separated by spaces"
-                      rows={2}
-                    />
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Status and scheduling */}
-              {showSchedule && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Post Status & Scheduling</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <Select value={status} onValueChange={setStatus}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="draft">Draft</SelectItem>
-                        <SelectItem value="scheduled">Scheduled</SelectItem>
-                        <SelectItem value="published">Published</SelectItem>
-                      </SelectContent>
-                    </Select>
-
-                    {status === "scheduled" && (
+                  {/* YouTube specific fields */}
+                  {showYoutubeFields && (
+                    <div className="border rounded-lg p-4 space-y-4">
+                      <h3 className="font-semibold">YouTube Details</h3>
                       <div>
-                        <Label htmlFor="scheduledAt">Scheduled Date & Time</Label>
+                        <Label htmlFor="youtubeTitle">YouTube Title</Label>
+                        <Input id="youtubeTitle" value={youtubeTitle} onChange={(e) => setYoutubeTitle(e.target.value)} placeholder="Enter YouTube video title" />
+                      </div>
+                      <div>
+                        <Label htmlFor="youtubeDescription">YouTube Description</Label>
+                        <Textarea id="youtubeDescription" value={youtubeDescription} onChange={(e) => setYoutubeDescription(e.target.value)} placeholder="Enter YouTube video description" rows={3} />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Instagram tags */}
+                  {showInstagramFields && (
+                    <div>
+                      <Label>Instagram Hashtags</Label>
+                      <Textarea value={instagramTags} onChange={(e) => setInstagramTags(e.target.value)} placeholder="Enter Instagram hashtags separated by spaces" rows={2} className="mt-1" />
+                    </div>
+                  )}
+
+                  {/* Facebook tags */}
+                  {showFacebookFields && (
+                    <div>
+                      <Label>Facebook Hashtags</Label>
+                      <Textarea value={facebookTags} onChange={(e) => setFacebookTags(e.target.value)} placeholder="Enter Facebook hashtags separated by spaces" rows={2} className="mt-1" />
+                    </div>
+                  )}
+
+                  {/* Status and Schedule - side by side */}
+                  {showSchedule && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label>Status <span className="text-destructive">*</span></Label>
+                        <Select value={status} onValueChange={setStatus}>
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Select status" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="draft">Draft</SelectItem>
+                            <SelectItem value="scheduled">Scheduled</SelectItem>
+                            <SelectItem value="published">Published</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="scheduledAt">Schedule Date & Time <span className="text-destructive">*</span></Label>
                         <Input
                           id="scheduledAt"
                           type="datetime-local"
                           value={scheduledAt}
                           onChange={(e) => setScheduledAt(e.target.value)}
+                          className="mt-1"
                         />
                       </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )}
-
-              <div className="flex justify-end space-x-4">
-                <Button type="submit" disabled={loading || uploading}>
-                  {loading || uploading ? (
-                    <>
-                      <Loader2 className="animate-spin mr-2 h-4 w-4" /> Saving...
-                    </>
-                  ) : (
-                    "Create Post"
+                    </div>
                   )}
-                </Button>
-                <Button type="button" variant="outline" onClick={() => navigate("/posts")}>
-                  Cancel
-                </Button>
-              </div>
-            </>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Submit / Cancel */}
+          {typeOfPost && (
+            <div className="flex gap-3 mt-6">
+              <Button type="submit" disabled={loading || uploading}>
+                {loading || uploading ? (
+                  <><Loader2 className="animate-spin mr-2 h-4 w-4" /> Saving...</>
+                ) : (
+                  "Submit"
+                )}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => navigate("/posts")}>
+                Cancel
+              </Button>
+            </div>
           )}
         </form>
       </div>
