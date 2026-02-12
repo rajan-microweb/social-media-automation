@@ -796,8 +796,63 @@ export default function CreatePost() {
                             setPdfUrl("");
                           }
                         }}
-                        className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-muted file:text-foreground hover:file:bg-muted/80"
+                      className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-muted file:text-foreground hover:file:bg-muted/80"
                       />
+                      {mediaFile && (
+                        <p className="text-sm text-muted-foreground mt-1">Selected: {mediaFile.name}</p>
+                      )}
+
+                      {/* Media Preview */}
+                      {(mediaFile || imageUrl || videoUrl || pdfUrl) && (
+                        <div className="mt-3 p-3 border rounded-lg bg-muted/30">
+                          <p className="text-sm font-medium mb-2">Preview:</p>
+
+                          {typeOfPost === "image" && (
+                            <>
+                              {mediaFile && (
+                                <img src={URL.createObjectURL(mediaFile)} alt="Preview" className="max-h-48 rounded-md object-contain" />
+                              )}
+                              {imageUrl && (
+                                <img src={imageUrl} alt="AI Generated Preview" className="max-h-48 rounded-md object-contain" />
+                              )}
+                            </>
+                          )}
+
+                          {(typeOfPost === "video" || typeOfPost === "shorts") && (
+                            <>
+                              {mediaFile && (
+                                <video src={URL.createObjectURL(mediaFile)} controls className="max-h-48 rounded-md" />
+                              )}
+                              {videoUrl && (
+                                <video src={videoUrl} controls className="max-h-48 rounded-md" />
+                              )}
+                            </>
+                          )}
+
+                          {typeOfPost === "pdf" && (
+                            <>
+                              {mediaFile && (
+                                <div className="flex items-center gap-2 p-3 bg-background rounded-md">
+                                  <div className="text-2xl">📄</div>
+                                  <div>
+                                    <p className="text-sm font-medium">{mediaFile.name}</p>
+                                    <p className="text-xs text-muted-foreground">{(mediaFile.size / 1024).toFixed(2)} KB</p>
+                                  </div>
+                                </div>
+                              )}
+                              {pdfUrl && (
+                                <div className="flex items-center gap-2 p-3 bg-background rounded-md">
+                                  <div className="text-2xl">📄</div>
+                                  <div>
+                                    <p className="text-sm font-medium">AI Generated PDF</p>
+                                    <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">View PDF</a>
+                                  </div>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -839,6 +894,17 @@ export default function CreatePost() {
                           }}
                           className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-muted file:text-foreground hover:file:bg-muted/80"
                         />
+                        {/* Article Thumbnail Preview */}
+                        {(articleThumbnailFile || articleThumbnailUrl) && (
+                          <div className="mt-3 p-3 border rounded-lg bg-muted/30">
+                            <p className="text-sm font-medium mb-2">Preview:</p>
+                            <img
+                              src={articleThumbnailUrl || (articleThumbnailFile ? URL.createObjectURL(articleThumbnailFile) : "")}
+                              alt="Thumbnail preview"
+                              className="max-h-48 rounded-md object-contain"
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
