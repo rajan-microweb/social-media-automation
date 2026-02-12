@@ -657,7 +657,6 @@ export default function EditStory() {
         fieldType={aiModalField}
         context={{
           userId: user?.id,
-          apiKey: openaiApiKey,
           platforms: platforms,
           typeOfPost: typeOfStory,
         }}
