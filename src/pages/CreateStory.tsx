@@ -590,7 +590,6 @@ export default function CreateStory() {
         fieldType={aiModalField}
         context={{
           userId: user?.id,
-          apiKey: openaiApiKey,
           platforms: platforms,
           typeOfPost: typeOfStory,
         }}

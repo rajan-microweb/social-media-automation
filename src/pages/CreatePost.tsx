@@ -487,10 +487,9 @@ export default function CreatePost() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+           body: JSON.stringify({
             imagePrompt: carouselAiPrompt,
             userId: user?.id,
-            apiKey: openaiApiKey,
             platforms: [platforms.includes("instagram") ? "instagram" : "general"],
             typeOfPost: "carousel",
           }),
@@ -931,6 +930,13 @@ export default function CreatePost() {
         onClose={() => setAiModalOpen(false)}
         fieldType={aiModalField}
         onGenerate={handleAiGenerate}
+        context={{
+          userId: user?.id,
+          platforms: platforms,
+          typeOfPost: typeOfPost,
+          title: postTitle,
+          description: postDescription,
+        }}
       />
 
       <AlertDialog open={showConnectionAlert} onOpenChange={setShowConnectionAlert}>

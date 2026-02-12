@@ -1133,7 +1133,6 @@ export default function EditPost() {
         fieldType={aiModalField}
         context={{
           userId: user?.id,
-          apiKey: openaiApiKey,
           platforms: platforms,
           typeOfPost: typeOfPost,
           title: postTitle,

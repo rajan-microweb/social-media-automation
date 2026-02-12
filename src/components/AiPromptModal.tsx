@@ -10,7 +10,6 @@ import { uploadMediaFromUrl, uploadBase64ToStorage } from "@/lib/mediaUploadUtil
 
 interface AiContext {
   userId?: string;
-  apiKey?: string;
   platforms?: string[];
   typeOfPost?: string;
   typeOfStory?: string;
@@ -53,7 +52,6 @@ export function AiPromptModal({
       const payload: Record<string, any> = {
         // Always include context fields
         userId: context?.userId,
-        apiKey: context?.apiKey,
         platforms: context?.platforms,
         typeOfPost: context?.typeOfPost,
         typeOfStory: context?.typeOfStory,
